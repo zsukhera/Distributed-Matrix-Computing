@@ -1,38 +1,84 @@
-# makefile for Distributed-Matrix-Computing (Question 1)
-# Builds the dense matrix multiplication program with MPI and OpenMP.
+# Makefile — Distributed Matrix Computing (Q1, Q2, Q3)
+#
+# Usage:
+#   make           build all three tasks
+#   make task1     build Question 1 only
+#   make task2     build Question 2 only
+#   make task3     build Question 3 only
+#   make test1     run all Q1 tests (N=8,1000,2000,4000 tested inside binary)
+#   make test2     run all Q2 tests
+#   make test3     run all Q3 tests
+#   make clean     remove all binaries
 
 CXX      := mpicxx
 CXXFLAGS := -O2 -fopenmp -std=c++17 -Wall -Wextra
 LDFLAGS  := -fopenmp
 
-SRC := task1.cpp
-BIN := task1
+.PHONY: all clean task1 task2 task3 test1 test2 test3
 
-# Cluster run settings (override on the command line, e.g. make run NP=3 THREADS=4)
-HOSTFILE ?= hosts
-NP       ?= 3
-THREADS  ?= 2
-ARGS     ?=
-# --map-by node   : deal processes round-robin across nodes (master, slave1, slave2, master, ...)
-# --oversubscribe : allow more processes than slots (NP > 3 on this cluster)
-MPIRUN   := mpirun --hostfile $(HOSTFILE) -np $(NP) \
-            --map-by node --oversubscribe --bind-to none \
-            -x OMP_NUM_THREADS=$(THREADS)
+all: task1 task2 task3
 
-.PHONY: all clean run run-local
+# -----------------------------------------------------------------------
+# Question 1 — Dense Matrix Multiplication
+# Binary tests N = 8, 1000, 2000, 4000 internally.
+# -----------------------------------------------------------------------
+task1: task1.cpp
+	$(CXX) $(CXXFLAGS) -o $@ $< $(LDFLAGS)
 
-all: $(BIN)
+test1: task1
+	@echo ">>> Q1 | p=1, threads=1"
+	OMP_NUM_THREADS=1 mpirun -n 1 ./task1
 
-$(BIN): $(SRC)
-	$(CXX) $(CXXFLAGS) -o $@ $(SRC) $(LDFLAGS)
+	@echo ">>> Q1 | p=1, threads=2"
+	OMP_NUM_THREADS=2 mpirun -n 1 ./task1
 
-# Run across the cluster: one MPI process per node, THREADS OpenMP threads each
-run: $(BIN)
-	$(MPIRUN) ./$(BIN) $(ARGS)
+	@echo ">>> Q1 | p=1, threads=4"
+	OMP_NUM_THREADS=4 mpirun -n 1 ./task1
 
-# Run on this machine only (useful for quick tests)
-run-local: $(BIN)
-	mpirun --oversubscribe -np $(NP) -x OMP_NUM_THREADS=$(THREADS) ./$(BIN) $(ARGS)
+	@echo ">>> Q1 | p=2, threads=1"
+	OMP_NUM_THREADS=1 mpirun -n 2 ./task1
 
+	@echo ">>> Q1 | p=4, threads=1"
+	OMP_NUM_THREADS=1 mpirun -n 4 ./task1
+
+	@echo ">>> Q1 | p=8, threads=1"
+	OMP_NUM_THREADS=1 mpirun -n 8 ./task1
+
+	@echo ">>> Q1 | p=2, threads=4 (hybrid)"
+	OMP_NUM_THREADS=4 mpirun -n 2 ./task1
+
+# -----------------------------------------------------------------------
+# Question 2 — Sparse Matrix Multiplication (Social Network)
+# -----------------------------------------------------------------------
+task2: task2.cpp
+	$(CXX) $(CXXFLAGS) -o $@ $< $(LDFLAGS)
+
+test2: task2
+	@echo ">>> Q2 | p=1, threads=1"
+	OMP_NUM_THREADS=1 mpirun -n 1 ./task2
+
+	@echo ">>> Q2 | p=4, threads=1"
+	OMP_NUM_THREADS=1 mpirun -n 4 ./task2
+
+	@echo ">>> Q2 | p=8, threads=1"
+	OMP_NUM_THREADS=1 mpirun -n 8 ./task2
+
+# -----------------------------------------------------------------------
+# Question 3 — Adding Up Partial Results (Parallel Training)
+# -----------------------------------------------------------------------
+task3: task3.cpp
+	$(CXX) $(CXXFLAGS) -o $@ $< $(LDFLAGS)
+
+test3: task3
+	@echo ">>> Q3 | p=1, threads=1"
+	OMP_NUM_THREADS=1 mpirun -n 1 ./task3
+
+	@echo ">>> Q3 | p=4, threads=1"
+	OMP_NUM_THREADS=1 mpirun -n 4 ./task3
+
+	@echo ">>> Q3 | p=8, threads=1"
+	OMP_NUM_THREADS=1 mpirun -n 8 ./task3
+
+# -----------------------------------------------------------------------
 clean:
-	rm -f $(BIN)
+	rm -f task1 task2 task3
