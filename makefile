@@ -14,7 +14,10 @@ CXX      := mpicxx
 CXXFLAGS := -O2 -fopenmp -std=c++17 -Wall -Wextra
 LDFLAGS  := -fopenmp
 
-.PHONY: all clean task1 task2 task3 test1 test2 test3
+SLAVES   := slave1 slave2
+DEPLOY_DIR := /mirror/Distributed-Matrix-Computing
+
+.PHONY: all clean deploy task1 task2 task3 test1 test2 test3
 
 all: task1 task2 task3
 
@@ -78,6 +81,13 @@ test3: task3
 
 	@echo ">>> Q3 | p=8, threads=1"
 	OMP_NUM_THREADS=1 mpirun -n 8 ./task3
+
+# -----------------------------------------------------------------------
+deploy: task1
+	@for s in $(SLAVES); do \
+		echo "Deploying to $$s..."; \
+		scp task1 $$s:$(DEPLOY_DIR)/task1; \
+	done
 
 # -----------------------------------------------------------------------
 clean:
