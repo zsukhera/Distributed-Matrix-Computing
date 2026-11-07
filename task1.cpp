@@ -318,6 +318,7 @@ static void task1_2_one(int N, int rank, int size)
     delete[] displs;
 }
 
+//wrapper
 static void task1_2(int rank, int size, const int* sizes, int nsizes)
 {
     if (rank == 0)
@@ -334,10 +335,291 @@ static void task1_2(int rank, int size, const int* sizes, int nsizes)
 }
 
 /* -----------------------------------------------------------------------
+ * Task 1.3 — Version B: Blocking Ring
+ * Each process owns its own rows of A and B (no Bcast of full B).
+ * B blocks rotate around the ring with blocking Send/Recv so every
+ * process multiplies against every block, accumulating local C.
+ * Memory per process: local A + 2 B-blocks + local C.
+ * --------------------------------------------------------------------- */
+static void task1_3_one(int N, int rank, int size)
+{
+    int my_rows  = rows_of(rank, N, size);
+    int my_start = start_of(rank, N, size);
+
+    int* counts = new int[size];
+    int* displs = new int[size];
+    for (int r = 0; r < size; r++) {
+        counts[r] = rows_of(r, N, size) * N;
+        displs[r] = start_of(r, N, size) * N;
+    }
+
+    int max_block_rows = rows_of(0, N, size);  /* rank 0 always has the largest block */
+
+    double* local_A = new double[(size_t)my_rows * N];
+    double* local_C = new double[(size_t)my_rows * N]();  /* zero-init for += */
+    double* buf[2];
+    buf[0] = new double[(size_t)max_block_rows * N];
+    buf[1] = new double[(size_t)max_block_rows * N];
+
+    fill_A(local_A, my_start, my_rows, N);
+    fill_B_block(buf[0], my_start, my_rows, N);  /* start with own B block */
+
+    int left  = (rank - 1 + size) % size;
+    int right = (rank + 1) % size;
+    int cur       = 0;
+    int cur_owner = rank;
+
+    MPI_Barrier(MPI_COMM_WORLD);
+    double t_start = MPI_Wtime();
+
+    double t_mult_total = 0.0, t_ring_total = 0.0;
+
+    for (int s = 0; s < size; s++) {
+        int q       = cur_owner;
+        int q_rows  = rows_of(q, N, size);
+        int q_start = start_of(q, N, size);
+
+        /* partial multiply: C_r += A_r[:, q_start:q_start+q_rows] x B_q */
+        double t0 = MPI_Wtime();
+        for (int i = 0; i < my_rows; i++)
+            for (int k = 0; k < q_rows; k++) {
+                double a_ik = local_A[i*N + q_start + k];
+                for (int j = 0; j < N; j++)
+                    local_C[i*N + j] += a_ik * buf[cur][k*N + j];
+            }
+        t_mult_total += MPI_Wtime() - t0;
+
+        if (s < size - 1) {
+            int nxt        = 1 - cur;
+            int next_owner = (cur_owner + 1) % size;
+            int next_rows  = rows_of(next_owner, N, size);
+
+            /* deadlock fix: even ranks send first, odd ranks receive first */
+            t0 = MPI_Wtime();
+            if (rank % 2 == 0) {
+                MPI_Send(buf[cur], q_rows * N,    MPI_DOUBLE, left,  0, MPI_COMM_WORLD);
+                MPI_Recv(buf[nxt], next_rows * N, MPI_DOUBLE, right, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            } else {
+                MPI_Recv(buf[nxt], next_rows * N, MPI_DOUBLE, right, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                MPI_Send(buf[cur], q_rows * N,    MPI_DOUBLE, left,  0, MPI_COMM_WORLD);
+            }
+            t_ring_total += MPI_Wtime() - t0;
+
+            cur       = nxt;
+            cur_owner = next_owner;
+        }
+    }
+
+    /* reduce per-process totals to rank 0 */
+    double t_mult_max, t_ring_max;
+    MPI_Reduce(&t_mult_total, &t_mult_max, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+    MPI_Reduce(&t_ring_total, &t_ring_max, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+
+    /* gather C to rank 0 */
+    double* C_full = nullptr;
+    if (rank == 0) {
+        C_full = new double[(size_t)N * N];
+        memcpy(C_full, local_C, (size_t)counts[0] * sizeof(double));
+    }
+    double tg = MPI_Wtime();
+    if (rank == 0)
+        MPI_Gatherv(MPI_IN_PLACE, counts[0], MPI_DOUBLE,
+                    C_full, counts, displs, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    else
+        MPI_Gatherv(local_C, counts[rank], MPI_DOUBLE,
+                    nullptr, counts, displs, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    double t_gather = elapsed_max(tg);
+    double t_total  = elapsed_max(t_start);
+
+    if (rank == 0) {
+        cout << "\n--- N=" << N << ", p=" << size << " ---\n"
+             << setprecision(6) << defaultfloat
+             << "Ring-comm:   " << t_ring_max << " s\n"
+             << "Multiply:    " << t_mult_max << " s\n"
+             << "Gatherv(C):  " << t_gather   << " s\n"
+             << "Total:       " << t_total    << " s\n"
+             << "Memory/proc (2 B-blocks): "
+             << 2.0 * max_block_rows * N * sizeof(double) / (1024.0 * 1024.0)
+             << " MiB (vs "
+             << (double)N * N * sizeof(double) / (1024.0 * 1024.0)
+             << " MiB for Version A's full B)\n";
+        if (N == 8) print_full_matrix(C_full, N);
+        else        print_five_entries(C_full, N);
+        cout << defaultfloat;
+        delete[] C_full;
+    }
+
+    delete[] local_A;
+    delete[] local_C;
+    delete[] buf[0];
+    delete[] buf[1];
+    delete[] counts;
+    delete[] displs;
+}
+
+static void task1_3(int rank, int size, const int* sizes, int nsizes)
+{
+    if (rank == 0)
+        cout << "\n========== Task 1.3  (Version B: Blocking Ring, p="
+             << size << ") ==========\n";
+    for (int t = 0; t < nsizes; t++) {
+        if (sizes[t] < size) {
+            if (rank == 0)
+                cout << "\nSkipping N=" << sizes[t] << " (fewer rows than processes)\n";
+            continue;
+        }
+        task1_3_one(sizes[t], rank, size);
+    }
+}
+
+/* -----------------------------------------------------------------------
+ * Task 1.4 — Version C: Non-blocking Ring + OpenMP
+ * Same ring as 1.3 but MPI_Irecv/Isend are posted before the multiply so
+ * communication and computation overlap. Two buffers alternate: one is
+ * used for the current multiply while the other is being filled by Irecv.
+ * OpenMP parallelises the multiply across rows.
+ * --------------------------------------------------------------------- */
+static void task1_4_one(int N, int rank, int size)
+{
+    int my_rows  = rows_of(rank, N, size);
+    int my_start = start_of(rank, N, size);
+
+    int* counts = new int[size];
+    int* displs = new int[size];
+    for (int r = 0; r < size; r++) {
+        counts[r] = rows_of(r, N, size) * N;
+        displs[r] = start_of(r, N, size) * N;
+    }
+
+    int max_block_rows = rows_of(0, N, size);
+
+    double* local_A = new double[(size_t)my_rows * N];
+    double* local_C = new double[(size_t)my_rows * N]();
+    double* buf[2];
+    buf[0] = new double[(size_t)max_block_rows * N];
+    buf[1] = new double[(size_t)max_block_rows * N];
+
+    fill_A(local_A, my_start, my_rows, N);
+    fill_B_block(buf[0], my_start, my_rows, N);
+
+    int left  = (rank - 1 + size) % size;
+    int right = (rank + 1) % size;
+    int cur       = 0;
+    int cur_owner = rank;
+
+    MPI_Barrier(MPI_COMM_WORLD);
+    double t_start = MPI_Wtime();
+
+    double t_mult_total = 0.0, t_wait_total = 0.0;
+
+    for (int s = 0; s < size; s++) {
+        int q       = cur_owner;
+        int q_rows  = rows_of(q, N, size);
+        int q_start = start_of(q, N, size);
+        int nxt     = 1 - cur;
+
+        MPI_Request reqs[2];
+        bool has_comm = (s < size - 1);
+
+        if (has_comm) {
+            int next_owner = (cur_owner + 1) % size;
+            int next_rows  = rows_of(next_owner, N, size);
+            /* post recv and send before computing so they overlap */
+            MPI_Irecv(buf[nxt], next_rows * N, MPI_DOUBLE, right, 0, MPI_COMM_WORLD, &reqs[0]);
+            MPI_Isend(buf[cur], q_rows * N,    MPI_DOUBLE, left,  0, MPI_COMM_WORLD, &reqs[1]);
+        }
+
+        /* multiply with buf[cur] while messages are in flight */
+        double t0 = MPI_Wtime();
+        #pragma omp parallel for schedule(static)
+        for (int i = 0; i < my_rows; i++)
+            for (int k = 0; k < q_rows; k++) {
+                double a_ik = local_A[i*N + q_start + k];
+                for (int j = 0; j < N; j++)
+                    local_C[i*N + j] += a_ik * buf[cur][k*N + j];
+            }
+        t_mult_total += MPI_Wtime() - t0;
+
+        if (has_comm) {
+            /* wait for both messages before touching buf[nxt] */
+            t0 = MPI_Wtime();
+            MPI_Waitall(2, reqs, MPI_STATUSES_IGNORE);
+            t_wait_total += MPI_Wtime() - t0;
+
+            cur       = nxt;
+            cur_owner = (cur_owner + 1) % size;
+        }
+    }
+
+    double t_mult_max, t_wait_max;
+    MPI_Reduce(&t_mult_total, &t_mult_max, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+    MPI_Reduce(&t_wait_total, &t_wait_max, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+
+    /* gather C to rank 0 */
+    double* C_full = nullptr;
+    if (rank == 0) {
+        C_full = new double[(size_t)N * N];
+        memcpy(C_full, local_C, (size_t)counts[0] * sizeof(double));
+    }
+    double tg = MPI_Wtime();
+    if (rank == 0)
+        MPI_Gatherv(MPI_IN_PLACE, counts[0], MPI_DOUBLE,
+                    C_full, counts, displs, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    else
+        MPI_Gatherv(local_C, counts[rank], MPI_DOUBLE,
+                    nullptr, counts, displs, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    double t_gather = elapsed_max(tg);
+    double t_total  = elapsed_max(t_start);
+
+    if (rank == 0) {
+        int nthreads = 1;
+        #pragma omp parallel
+        #pragma omp single
+        nthreads = omp_get_num_threads();
+
+        cout << "\n--- N=" << N << ", p=" << size << ", threads=" << nthreads << " ---\n"
+             << setprecision(6) << defaultfloat
+             << "Multiply:    " << t_mult_max << " s\n"
+             << "Wait(comm):  " << t_wait_max << " s\n"
+             << "Gatherv(C):  " << t_gather   << " s\n"
+             << "Total:       " << t_total    << " s\n"
+             << "Memory/proc (2 B-blocks): "
+             << 2.0 * max_block_rows * N * sizeof(double) / (1024.0 * 1024.0)
+             << " MiB\n";
+        if (N == 8) print_full_matrix(C_full, N);
+        else        print_five_entries(C_full, N);
+        cout << defaultfloat;
+        delete[] C_full;
+    }
+
+    delete[] local_A;
+    delete[] local_C;
+    delete[] buf[0];
+    delete[] buf[1];
+    delete[] counts;
+    delete[] displs;
+}
+
+static void task1_4(int rank, int size, const int* sizes, int nsizes)
+{
+    if (rank == 0)
+        cout << "\n========== Task 1.4  (Version C: Non-blocking Ring + OpenMP, p="
+             << size << ") ==========\n";
+    for (int t = 0; t < nsizes; t++) {
+        if (sizes[t] < size) {
+            if (rank == 0)
+                cout << "\nSkipping N=" << sizes[t] << " (fewer rows than processes)\n";
+            continue;
+        }
+        task1_4_one(sizes[t], rank, size);
+    }
+}
+
+/* -----------------------------------------------------------------------
  * main
  *   ./task1 [N] [task]
  *     N     matrix size (default: 8, 1000, 2000, 4000)
- *     task  1.1 | 1.2 | all   (default: all)
+ *     task  1.1 | 1.2 | 1.3 | 1.4 | all   (default: all)
  * --------------------------------------------------------------------- */
 int main(int argc, char* argv[])
 {
@@ -353,7 +635,7 @@ int main(int argc, char* argv[])
     if (argc > 1) {
         user_N = atoi(argv[1]);
         if (user_N <= 0) {
-            if (rank == 0) cerr << "Usage: " << argv[0] << " [N] [1.1|1.2|all]\n";
+            if (rank == 0) cerr << "Usage: " << argv[0] << " [N] [1.1|1.2|1.3|1.4|all]\n";
             MPI_Finalize();
             return 1;
         }
@@ -380,12 +662,14 @@ int main(int argc, char* argv[])
         }
     }
 
-    if (task == "1.1" || task == "all") {
-        /* Task 1.1 is single-process; runs on rank 0 only */
+    if (task == "1.1" || task == "all")
         task1_1(rank, sizes, nsizes);
-    }
     if (task == "1.2" || task == "all")
         task1_2(rank, size, sizes, nsizes);
+    if (task == "1.3" || task == "all")
+        task1_3(rank, size, sizes, nsizes);
+    if (task == "1.4" || task == "all")
+        task1_4(rank, size, sizes, nsizes);
 
     MPI_Finalize();
     return 0;
