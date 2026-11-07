@@ -86,7 +86,9 @@ test3: task3
 deploy: task1
 	@for s in $(SLAVES); do \
 		echo "Deploying to $$s..."; \
-		scp task1 $$s:$(DEPLOY_DIR)/task1; \
+		ssh $$s "mkdir -p $(DEPLOY_DIR)" && \
+		scp task1 $$s:$(DEPLOY_DIR)/.task1.tmp && \
+		ssh $$s "mv -f $(DEPLOY_DIR)/.task1.tmp $(DEPLOY_DIR)/task1" || exit 1; \
 	done
 
 # -----------------------------------------------------------------------

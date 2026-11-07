@@ -13,6 +13,8 @@
 #include <iostream>
 #include <iomanip>
 #include <cstring>
+#include <cstdlib>
+#include <string>
 #include <mpi.h>
 #include <omp.h>
 
@@ -151,7 +153,7 @@ static double elapsed_max(double t0)
  * Task 1.1 — serial i-j-k, serial i-k-j, OpenMP i-k-j
  * Single MPI process; all three kernels run for every test size.
  * --------------------------------------------------------------------- */
-static void task1_1(int rank)
+static void task1_1(int rank, const int* sizes, int nsizes)
 {
     if (rank != 0) return;
 
@@ -163,8 +165,8 @@ static void task1_1(int rank)
     cout << "\n========== Task 1.1  (OpenMP, " << nthreads
          << " thread" << (nthreads == 1 ? "" : "s") << ") ==========\n";
 
-    for (int t = 0; t < NUM_SIZES; t++) {
-        int N = TEST_SIZES[t];
+    for (int t = 0; t < nsizes; t++) {
+        int N = sizes[t];
 
         double* A = new double[(size_t)N * N];
         double* B = new double[(size_t)N * N];
@@ -213,7 +215,124 @@ static void task1_1(int rank)
 }
 
 /* -----------------------------------------------------------------------
+ * Row partition: first (N mod p) ranks get one extra row.
+ * --------------------------------------------------------------------- */
+static int rows_of(int r, int N, int p)  { return N / p + (r < N % p ? 1 : 0); }
+static int start_of(int r, int N, int p) { return r * (N / p) + (r < N % p ? r : N % p); }
+
+/* -----------------------------------------------------------------------
+ * Task 1.2 — Version A: Scatterv(A) + Bcast(B) + local multiply + Gatherv(C)
+ * Rank 0 builds full A and B; every rank receives the whole of B.
+ * --------------------------------------------------------------------- */
+static void task1_2_one(int N, int rank, int size)
+{
+    int my_rows = rows_of(rank, N, size);
+
+    /* counts / displacements in doubles (rows * N) */
+    int* counts = new int[size];
+    int* displs = new int[size];
+    for (int r = 0; r < size; r++) {
+        counts[r] = rows_of(r, N, size) * N;
+        displs[r] = start_of(r, N, size) * N;
+    }
+
+    double* A_full = nullptr;
+    double* C_full = nullptr;
+    double* B      = new double[(size_t)N * N];          /* every rank */
+    double* local_A;
+    double* local_C;
+
+    if (rank == 0) {
+        A_full = new double[(size_t)N * N];
+        C_full = new double[(size_t)N * N];
+        fill_A(A_full, 0, N, N);
+        fill_B_full(B, N);
+        /* rank 0's block is the first block of the full arrays (in-place) */
+        local_A = A_full;
+        local_C = C_full;
+    } else {
+        local_A = new double[(size_t)my_rows * N];
+        local_C = new double[(size_t)my_rows * N];
+    }
+
+    MPI_Barrier(MPI_COMM_WORLD);
+    double t_start = MPI_Wtime();
+
+    /* 1. Scatter rows of A */
+    double t0 = MPI_Wtime();
+    if (rank == 0)
+        MPI_Scatterv(A_full, counts, displs, MPI_DOUBLE,
+                     MPI_IN_PLACE, counts[0], MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    else
+        MPI_Scatterv(nullptr, counts, displs, MPI_DOUBLE,
+                     local_A, counts[rank], MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    double t_scatter = elapsed_max(t0);
+
+    /* 2. Broadcast all of B */
+    t0 = MPI_Wtime();
+    MPI_Bcast(B, N * N, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    double t_bcast = elapsed_max(t0);
+
+    /* 3. Local multiply: my rows of A x full B */
+    t0 = MPI_Wtime();
+    multiply_ikj_omp(local_A, B, local_C, my_rows, N);
+    double t_mult = elapsed_max(t0);
+
+    /* 4. Gather rows of C */
+    t0 = MPI_Wtime();
+    if (rank == 0)
+        MPI_Gatherv(MPI_IN_PLACE, counts[0], MPI_DOUBLE,
+                    C_full, counts, displs, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    else
+        MPI_Gatherv(local_C, counts[rank], MPI_DOUBLE,
+                    nullptr, counts, displs, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    double t_gather = elapsed_max(t0);
+
+    double t_total = elapsed_max(t_start);
+
+    if (rank == 0) {
+        cout << "\n--- N=" << N << ", p=" << size << " ---\n"
+             << setprecision(6) << defaultfloat
+             << "Scatterv(A): " << t_scatter << " s\n"
+             << "Bcast(B):    " << t_bcast   << " s\n"
+             << "Multiply:    " << t_mult    << " s\n"
+             << "Gatherv(C):  " << t_gather  << " s\n"
+             << "Total:       " << t_total   << " s\n"
+             << "Memory for B per process: "
+             << (double)N * N * sizeof(double) / (1024.0 * 1024.0)
+             << " MiB (x" << size << " copies)\n";
+        if (N == 8) print_full_matrix(C_full, N);
+        else        print_five_entries(C_full, N);
+        cout << defaultfloat;
+    }
+
+    if (rank == 0) { delete[] A_full; delete[] C_full; }
+    else           { delete[] local_A; delete[] local_C; }
+    delete[] B;
+    delete[] counts;
+    delete[] displs;
+}
+
+static void task1_2(int rank, int size, const int* sizes, int nsizes)
+{
+    if (rank == 0)
+        cout << "\n========== Task 1.2  (Version A: Scatterv/Bcast/Gatherv, p="
+             << size << ") ==========\n";
+    for (int t = 0; t < nsizes; t++) {
+        if (sizes[t] < size) {
+            if (rank == 0)
+                cout << "\nSkipping N=" << sizes[t] << " (fewer rows than processes)\n";
+            continue;
+        }
+        task1_2_one(sizes[t], rank, size);
+    }
+}
+
+/* -----------------------------------------------------------------------
  * main
+ *   ./task1 [N] [task]
+ *     N     matrix size (default: 8, 1000, 2000, 4000)
+ *     task  1.1 | 1.2 | all   (default: all)
  * --------------------------------------------------------------------- */
 int main(int argc, char* argv[])
 {
@@ -223,13 +342,45 @@ int main(int argc, char* argv[])
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
 
+    const int* sizes = TEST_SIZES;
+    int nsizes = NUM_SIZES;
+    int user_N = 0;
+    if (argc > 1) {
+        user_N = atoi(argv[1]);
+        if (user_N <= 0) {
+            if (rank == 0) cerr << "Usage: " << argv[0] << " [N] [1.1|1.2|all]\n";
+            MPI_Finalize();
+            return 1;
+        }
+        sizes = &user_N;
+        nsizes = 1;
+    }
+    string task = (argc > 2) ? argv[2] : "all";
+
     if (rank == 0)
         cout << "Processes=" << size << "\n";
+    /* show where each rank is running (proves slaves are used) */
+    {
+        char host[MPI_MAX_PROCESSOR_NAME];
+        int len;
+        MPI_Get_processor_name(host, &len);
+        char* all = nullptr;
+        if (rank == 0) all = new char[(size_t)size * MPI_MAX_PROCESSOR_NAME];
+        MPI_Gather(host, MPI_MAX_PROCESSOR_NAME, MPI_CHAR,
+                   all, MPI_MAX_PROCESSOR_NAME, MPI_CHAR, 0, MPI_COMM_WORLD);
+        if (rank == 0) {
+            for (int r = 0; r < size; r++)
+                cout << "  rank " << r << " on " << &all[(size_t)r * MPI_MAX_PROCESSOR_NAME] << "\n";
+            delete[] all;
+        }
+    }
 
-    /* Task 1.1 */
-    task1_1(rank);
-
-    /* Tasks 1.2, 1.3, 1.4 will be added here */
+    if (task == "1.1" || task == "all") {
+        /* Task 1.1 is single-process; runs on rank 0 only */
+        task1_1(rank, sizes, nsizes);
+    }
+    if (task == "1.2" || task == "all")
+        task1_2(rank, size, sizes, nsizes);
 
     MPI_Finalize();
     return 0;
