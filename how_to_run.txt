@@ -18,10 +18,10 @@ General form:
   <threads>   number of OpenMP threads per process (1, 2, 4 ...)
 
   The hosts file (./hosts) lists the cluster nodes and available slots:
-      master slots=8
-      slave1 slots=8
-      slave2 slots=8
-  Adjust slots to match the actual CPU count on each node (run: nproc).
+      master slots=1
+      slave1 slots=1
+      slave2 slots=1
+  Each VM has 1 core. p > 3 requires --oversubscribe.
 
 
 TASK 1.1 — OpenMP only (single process, vary threads)
@@ -73,11 +73,7 @@ Hybrid (one process per node, threads inside):
 
 CORRECTNESS CHECKS (via make targets)
 --------------------------------------
-    make test8       # N=8,  p=1/2/3  — full matrix, compare Table 1(a)
-    make test1000    # N=1000, threads 1/2/4 — five entries, compare Table 1(b)
-    make test2000    # N=2000, threads 1/2/4
-    make test4000    # N=4000, threads 1/4
-    make test        # run all of the above in sequence
+    make test1       # run all Q1 tests (p=1/2/4/8, threads=1/2/4)
 
 
 EXPECTED VALUES

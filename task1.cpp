@@ -103,15 +103,15 @@ static void multiply_ikj(const double* A, const double* B,
 static void multiply_ikj_omp(const double* A, const double* B,
                               double* C, int rows, int N)
 {
-#pragma omp parallel for schedule(static)
-    for (int i = 0; i < rows; i++) {
-        for (int j = 0; j < N; j++) C[i*N + j] = 0.0;
-        for (int k = 0; k < N; k++) {
-            double a_ik = A[i*N + k];
-            for (int j = 0; j < N; j++)
-                C[i*N + j] += a_ik * B[k*N + j];
+    #pragma omp parallel for schedule(static)
+        for (int i = 0; i < rows; i++) {
+            for (int j = 0; j < N; j++) C[i*N + j] = 0.0;
+            for (int k = 0; k < N; k++) {
+                double a_ik = A[i*N + k];
+                for (int j = 0; j < N; j++)
+                    C[i*N + j] += a_ik * B[k*N + j];
+            }
         }
-    }
 }
 
 /* -----------------------------------------------------------------------
@@ -158,8 +158,8 @@ static void task1_1(int rank, const int* sizes, int nsizes)
     if (rank != 0) return;
 
     int nthreads = 1;
-#pragma omp parallel
-#pragma omp single
+    #pragma omp parallel    //spawns all threads
+    #pragma omp single      // and this lets only one thread run
     nthreads = omp_get_num_threads();
 
     cout << "\n========== Task 1.1  (OpenMP, " << nthreads
@@ -215,7 +215,12 @@ static void task1_1(int rank, const int* sizes, int nsizes)
 }
 
 /* -----------------------------------------------------------------------
- * Row partition: first (N mod p) ranks get one extra row.
+ * Distribute N rows across p ranks as evenly as possible.
+ * The remainder (N % p) is spread one extra row at a time to the first
+ * (N % p) ranks, so no rank differs from another by more than one row.
+ *
+ * rows_of(r,N,p)  — number of rows assigned to rank r
+ * start_of(r,N,p) — index of rank r's first row in the global matrix
  * --------------------------------------------------------------------- */
 static int rows_of(int r, int N, int p)  { return N / p + (r < N % p ? 1 : 0); }
 static int start_of(int r, int N, int p) { return r * (N / p) + (r < N % p ? r : N % p); }
