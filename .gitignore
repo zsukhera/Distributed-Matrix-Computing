@@ -1,0 +1,26 @@
+CLAUDE.md
+
+# Executables
+task1
+task2
+task3
+
+# Compiled objects
+*.o
+*.a
+*.so
+
+# Build artifacts
+*.d
+*.out
+
+# Editor/IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
