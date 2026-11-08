@@ -6,7 +6,7 @@
 #   make task2     build Question 2 only
 #   make task3     build Question 3 only
 #   make test1     run all Q1 tests (N=8,1000,2000,4000 tested inside binary)
-#   make test2     run all Q2 tests
+#   make test2     Q2 correctness check (n=100000, p=1,3,7,8)
 #   make test3     run all Q3 tests
 #   make clean     remove all binaries
 
@@ -56,15 +56,21 @@ test1: task1
 task2: task2.cpp
 	$(CXX) $(CXXFLAGS) -o $@ $< $(LDFLAGS)
 
+# Quick correctness check on the cluster: every version, n = 100000, with
+# process counts that do and do not divide n. Every line must say OK.
+# Full benchmarks (n = 1000000): ./run_q2.sh  -> results/q2_outputs.txt
 test2: task2
 	@echo ">>> Q2 | p=1, threads=1"
-	OMP_NUM_THREADS=1 mpirun -n 1 ./task2
+	OMP_NUM_THREADS=1 mpirun -n 1 --hostfile hosts ./task2 100000
 
-	@echo ">>> Q2 | p=4, threads=1"
-	OMP_NUM_THREADS=1 mpirun -n 4 ./task2
+	@echo ">>> Q2 | p=3, threads=1"
+	OMP_NUM_THREADS=1 mpirun -n 3 --hostfile hosts ./task2 100000
+
+	@echo ">>> Q2 | p=7, threads=1"
+	OMP_NUM_THREADS=1 mpirun --oversubscribe --map-by node -n 7 --hostfile hosts ./task2 100000
 
 	@echo ">>> Q2 | p=8, threads=1"
-	OMP_NUM_THREADS=1 mpirun -n 8 ./task2
+	OMP_NUM_THREADS=1 mpirun --oversubscribe --map-by node -n 8 --hostfile hosts ./task2 100000
 
 # -----------------------------------------------------------------------
 # Question 3 — Adding Up Partial Results (Parallel Training)
@@ -83,12 +89,20 @@ test3: task3
 	OMP_NUM_THREADS=1 mpirun -n 8 ./task3
 
 # -----------------------------------------------------------------------
-deploy: task1
+# Binaries copied to every slave (add task3 once task3.cpp exists).
+# Each is copied to a temp name then renamed, so a running copy is never
+# overwritten half-way.
+DEPLOY_BINS := task1 task2
+
+deploy: $(DEPLOY_BINS)
 	@for s in $(SLAVES); do \
 		echo "Deploying to $$s..."; \
-		ssh $$s "mkdir -p $(DEPLOY_DIR)" && \
-		scp task1 $$s:$(DEPLOY_DIR)/.task1.tmp && \
-		ssh $$s "mv -f $(DEPLOY_DIR)/.task1.tmp $(DEPLOY_DIR)/task1" || exit 1; \
+		ssh $$s "mkdir -p $(DEPLOY_DIR)" || exit 1; \
+		for b in $(DEPLOY_BINS); do \
+			echo "  $$b"; \
+			scp $$b $$s:$(DEPLOY_DIR)/.$$b.tmp && \
+			ssh $$s "mv -f $(DEPLOY_DIR)/.$$b.tmp $(DEPLOY_DIR)/$$b" || exit 1; \
+		done; \
 	done
 
 # -----------------------------------------------------------------------
