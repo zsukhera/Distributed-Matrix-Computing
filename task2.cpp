@@ -17,12 +17,6 @@
  * Every version prints H(0,0), H(12345,7), H(n-1,15) after T = 10 steps
  * with 12 decimals and compares them with Table 3.
  *
- * Markers used in comments:
- *   [OpenMP]          OpenMP parallel region / work-sharing
- *   [MPI collective]  collective communication
- *   [MPI p2p]         point-to-point communication
- *   [OVERLAP]         computation done while messages are in flight
- *
  * Build:  make task2
  * Run:    OMP_NUM_THREADS=<t> mpirun -n <p> --hostfile hosts ./task2 [n] [task]
  *           n     number of users       (default: 100000 and 1000000)
@@ -126,7 +120,7 @@ static void build_csr(CSR& A, long row_start, long rows, long n)
     A.col_idx.resize(nnz);
     A.val.resize(nnz);
 
-    #pragma omp parallel for schedule(dynamic, 64)   /* [OpenMP] hub rows are uneven */
+    #pragma omp parallel for schedule(dynamic, 64)   /* hub rows are uneven */
     for (long r = 0; r < rows; r++) {
         long   i = row_start + r;
         int    d = degree(i, n);
@@ -151,7 +145,7 @@ static inline double h0(long i, int f)
 //there is no need to optimise here but maine to aisay hi kardia
 static void fill_H(double* H, long row_start, long rows)
 {
-    #pragma omp parallel for schedule(static)          /* [OpenMP] */
+    #pragma omp parallel for schedule(static)
     for (long r = 0; r < rows; r++)
         for (int f = 0; f < F; f++)
             H[r * F + f] = h0(row_start + r, f);
@@ -197,27 +191,24 @@ struct ThreadStats {
     explicit ThreadStats(int nt) : busy(nt, 0.0), links(nt, 0) {}
 };
 
-/* OpenMP Code 3 over rows [r_begin, r_end).
-   Each row of Hout is written by exactly one thread -> no race.
-   schedule(static)      : equal numbers of ROWS per thread (one block each)
-   schedule(dynamic, 64) : threads grab 64 rows at a time as they finish */
-static void csr_rows(const long* row_ptr, const int* col, const double* val,
-                     const double* Hin, double* Hout, long r_begin, long r_end,
+/* OpenMP Code 3 over rows [r_begin, r_end). */
+//computes one row. but now this runs in parallel and it is divided across users
+static void csr_rows(const long* row_ptr, const int* col, const double* val, const double* Hin, double* Hout, long r_begin, long r_end,
                      Sched sched, ThreadStats* ts = nullptr)
 {
     if (r_end <= r_begin) return;
 
-    #pragma omp parallel                                     /* [OpenMP] */
+    #pragma omp parallel
     {
         double t0    = omp_get_wtime();
         long   links = 0;
 
         if (sched == SCHED_STATIC) {
-            #pragma omp for schedule(static) nowait          /* [OpenMP] */
+            #pragma omp for schedule(static) nowait
             for (long r = r_begin; r < r_end; r++)
                 links += csr_row(row_ptr, col, val, Hin, Hout, r);
         } else {
-            #pragma omp for schedule(dynamic, 64) nowait     /* [OpenMP] */
+            #pragma omp for schedule(dynamic, 64) nowait
             for (long r = r_begin; r < r_end; r++)
                 links += csr_row(row_ptr, col, val, Hin, Hout, r);
         }
@@ -310,7 +301,7 @@ static vector<long> equal_links_bounds(long n, int p, int rank)
         for (int q = 1; q < p; q++) b[q] = max(b[q], b[q - 1] + HALO);
         for (int q = p - 1; q >= 1; q--) b[q] = min(b[q], b[q + 1] - HALO);
     }
-    MPI_Bcast(b.data(), p + 1, MPI_LONG, 0, MPI_COMM_WORLD);   /* [MPI collective] */
+    MPI_Bcast(b.data(), p + 1, MPI_LONG, 0, MPI_COMM_WORLD);
     return b;
 }
 
@@ -333,14 +324,14 @@ static void report(const char* title, long n, int rank, int size,
                    const double* H_local, long my_start, long my_rows)
 {
     double t_max;
-    MPI_Reduce(&t_local, &t_max, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD); /* [MPI collective] */
+    MPI_Reduce(&t_local, &t_max, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
 
     const int K = 6;
     double mine[K] = {s.compute, s.comm, s.wait, (double)s.rows, (double)s.links,
                       s.bytes_per_step};
     vector<double> all(rank == 0 ? (size_t)K * size : 0);
     MPI_Gather(mine, K, MPI_DOUBLE, all.data(), K, MPI_DOUBLE, 0,
-               MPI_COMM_WORLD);                                             /* [MPI collective] */
+               MPI_COMM_WORLD);
 
     if (rank == 0) {
         long   total_links = 0;
@@ -474,13 +465,13 @@ static void version_A(long n, int rank, int size)
         double tc = MPI_Wtime();
         MPI_Allgatherv(H_loc.data(), counts[rank], MPI_DOUBLE,
                        H_full.data(), counts.data(), displs.data(), MPI_DOUBLE,
-                       MPI_COMM_WORLD);                                    /* [MPI collective] */
+                       MPI_COMM_WORLD);
         s.comm += MPI_Wtime() - tc;
 
         /* 2. compute my rows of H_new (written straight into H_loc) */
         tc = MPI_Wtime();
         csr_rows(W.row_ptr.data(), W.col_idx.data(), W.val.data(),
-                 H_full.data(), H_loc.data(), 0, my_rows, SCHED_DYNAMIC);  /* [OpenMP] */
+                 H_full.data(), H_loc.data(), 0, my_rows, SCHED_DYNAMIC);
         s.compute += MPI_Wtime() - tc;
     }
 
@@ -524,7 +515,7 @@ static void version_B(long n, int rank, int size, const vector<long>& b,
 
     /* column indices into the halo-extended buffer */
     vector<int> lcol(W.nnz());
-    #pragma omp parallel for schedule(dynamic, 64)                  /* [OpenMP] */
+    #pragma omp parallel for schedule(dynamic, 64)
     for (long r = 0; r < my_rows; r++) {
         long i   = my_start + r;
         long p   = W.row_ptr[r];
@@ -566,25 +557,25 @@ static void version_B(long n, int rank, int size, const vector<long>& b,
         /* post the halo exchange */
         double tc = MPI_Wtime();
         MPI_Irecv(H, cnt, MPI_DOUBLE, left, TAG_TO_RIGHT,
-                  MPI_COMM_WORLD, &req[0]);                            /* [MPI p2p] left halo  */
+                  MPI_COMM_WORLD, &req[0]);                            /* left halo */
         MPI_Irecv(H + (size_t)(HALO + my_rows) * F, cnt, MPI_DOUBLE, right, TAG_TO_LEFT,
-                  MPI_COMM_WORLD, &req[1]);                            /* [MPI p2p] right halo */
+                  MPI_COMM_WORLD, &req[1]);                            /* right halo */
         MPI_Isend(H + (size_t)HALO * F, cnt, MPI_DOUBLE, left, TAG_TO_LEFT,
-                  MPI_COMM_WORLD, &req[2]);                            /* [MPI p2p] first rows */
+                  MPI_COMM_WORLD, &req[2]);                            /* first rows */
         MPI_Isend(H + (size_t)my_rows * F, cnt, MPI_DOUBLE, right, TAG_TO_RIGHT,
-                  MPI_COMM_WORLD, &req[3]);                            /* [MPI p2p] last rows  */
+                  MPI_COMM_WORLD, &req[3]);                            /* last rows */
         s.comm += MPI_Wtime() - tc;
 
-        /* [OVERLAP] interior rows only read my own rows, which are not being
+        /* interior rows only read my own rows, which are not being
            received into, so they can be computed while the halos travel */
         if (overlap && has_interior) {
             tc = MPI_Wtime();
-            csr_rows(rp, ci, val, H, Hn, int_begin, int_end, SCHED_DYNAMIC);  /* [OpenMP] */
+            csr_rows(rp, ci, val, H, Hn, int_begin, int_end, SCHED_DYNAMIC);
             s.compute += MPI_Wtime() - tc;
         }
 
         tc = MPI_Wtime();
-        MPI_Waitall(4, req, MPI_STATUSES_IGNORE);                      /* [MPI p2p] */
+        MPI_Waitall(4, req, MPI_STATUSES_IGNORE);
         double w = MPI_Wtime() - tc;
         s.wait += w;
         s.comm += w;
@@ -592,10 +583,10 @@ static void version_B(long n, int rank, int size, const vector<long>& b,
         /* halo rows have arrived */
         tc = MPI_Wtime();
         if (overlap) {
-            csr_rows(rp, ci, val, H, Hn, 0, b1_end, SCHED_DYNAMIC);           /* [OpenMP] */
-            csr_rows(rp, ci, val, H, Hn, b2_begin, my_rows, SCHED_DYNAMIC);   /* [OpenMP] */
+            csr_rows(rp, ci, val, H, Hn, 0, b1_end, SCHED_DYNAMIC);
+            csr_rows(rp, ci, val, H, Hn, b2_begin, my_rows, SCHED_DYNAMIC);
         } else {
-            csr_rows(rp, ci, val, H, Hn, 0, my_rows, SCHED_DYNAMIC);          /* [OpenMP] */
+            csr_rows(rp, ci, val, H, Hn, 0, my_rows, SCHED_DYNAMIC);
         }
         s.compute += MPI_Wtime() - tc;
 
