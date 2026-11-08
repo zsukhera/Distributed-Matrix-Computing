@@ -15,6 +15,7 @@
 #include <cstring>
 #include <cstdlib>
 #include <string>
+#include <vector>
 #include <mpi.h>
 #include <omp.h>
 
@@ -135,7 +136,8 @@ static void print_five_entries(const double* C, int N)
          << "  C(1,0)="       << C[N]
          << "  C(N/2,N/2)="   << C[(N/2)*N + N/2]
          << "  C(N-1,N-1)="   << C[(N-1)*N + (N-1)]
-         << "\n";
+         << "\n"
+         << setprecision(6) << defaultfloat;   /* restore so later timings aren't rounded */
 }
 
 /* -----------------------------------------------------------------------
@@ -511,6 +513,7 @@ static void task1_4_one(int N, int rank, int size)
     double t_start = MPI_Wtime();
 
     double t_mult_total = 0.0, t_wait_total = 0.0;
+    std::vector<double> step_mult(size, 0.0), step_wait(size, 0.0);
 
     for (int s = 0; s < size; s++) {
         int q       = cur_owner;
@@ -538,13 +541,15 @@ static void task1_4_one(int N, int rank, int size)
                 for (int j = 0; j < N; j++)
                     local_C[i*N + j] += a_ik * buf[cur][k*N + j];
             }
-        t_mult_total += MPI_Wtime() - t0;
+        step_mult[s] = MPI_Wtime() - t0;
+        t_mult_total += step_mult[s];
 
         if (has_comm) {
             /* wait for both messages before touching buf[nxt] */
             t0 = MPI_Wtime();
             MPI_Waitall(2, reqs, MPI_STATUSES_IGNORE);
-            t_wait_total += MPI_Wtime() - t0;
+            step_wait[s] = MPI_Wtime() - t0;
+            t_wait_total += step_wait[s];
 
             cur       = nxt;
             cur_owner = (cur_owner + 1) % size;
@@ -554,6 +559,10 @@ static void task1_4_one(int N, int rank, int size)
     double t_mult_max, t_wait_max;
     MPI_Reduce(&t_mult_total, &t_mult_max, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
     MPI_Reduce(&t_wait_total, &t_wait_max, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+    /* per-step times: max across ranks for each ring step */
+    std::vector<double> step_mult_max(size), step_wait_max(size);
+    MPI_Reduce(step_mult.data(), step_mult_max.data(), size, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+    MPI_Reduce(step_wait.data(), step_wait_max.data(), size, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
 
     /* gather C to rank 0 */
     double* C_full = nullptr;
@@ -586,6 +595,14 @@ static void task1_4_one(int N, int rank, int size)
              << "Memory/proc (2 B-blocks): "
              << 2.0 * max_block_rows * N * sizeof(double) / (1024.0 * 1024.0)
              << " MiB\n";
+        cout << "Per-step times (max over ranks):\n"
+             << "  step   multiply(s)    wait(s)\n";
+        for (int s = 0; s < size; s++)
+            cout << "  " << setw(4) << s
+                 << fixed << setprecision(6)
+                 << "   " << setw(10) << step_mult_max[s]
+                 << "   " << setw(10) << step_wait_max[s] << "\n";
+        cout << setprecision(6) << defaultfloat;
         if (N == 8) print_full_matrix(C_full, N);
         else        print_five_entries(C_full, N);
         cout << defaultfloat;
