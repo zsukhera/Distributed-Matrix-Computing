@@ -1,107 +1,116 @@
 HOW TO RUN — All Questions (Dense, Sparse, Parallel Training)
 ==============================================================
 
-STEP 1 — Build
---------------
+CLUSTER
+-------
+3 VirtualBox VMs (Ubuntu 26.04, Open MPI, g++ 15.2), 1 core + 1.6 GiB RAM each:
+    master  192.168.56.10
+    slave1  192.168.56.11
+    slave2  192.168.56.12
+The hosts file (./hosts) lists the nodes with slots=1 each, so p > 3 needs
+    --oversubscribe --map-by node
+(--map-by node places ranks round-robin: master, slave1, slave2, master, ...).
+
+
+STEP 1 — Build and deploy
+-------------------------
     make              # build all three (task1, task2, task3)
-    make task1        # build Question 1 only
-    make task2        # build Question 2 only
-    make task3        # build Question 3 only
+    make task1        # build one question only (task1 / task2 / task3)
+    make deploy       # copy task1, task2, task3 to slave1 and slave2
 
-STEP 2 — Run
-------------
-General form:
-    OMP_NUM_THREADS=<threads> mpirun -n <processes> --hostfile hosts ./task1 <N>
-
-  <N>         matrix size (8 for quick check, 1000 / 2000 / 4000 for benchmarks)
-  <processes> number of MPI processes  (1, 2, 4, 8 ...)
-  <threads>   number of OpenMP threads per process (1, 2, 4 ...)
-
-  The hosts file (./hosts) lists the cluster nodes and available slots:
-      master slots=1
-      slave1 slots=1
-      slave2 slots=1
-  Each VM has 1 core. p > 3 requires --oversubscribe.
+Every node must run the SAME binary: run `make deploy` after every `make`,
+otherwise the job hangs or the slaves run an old version.
 
 
-TASK 1.1 — OpenMP only (single process, vary threads)
-------------------------------------------------------
-    OMP_NUM_THREADS=1 mpirun -n 1 --hostfile hosts ./task1 1000
-    OMP_NUM_THREADS=2 mpirun -n 1 --hostfile hosts ./task1 1000
-    OMP_NUM_THREADS=4 mpirun -n 1 --hostfile hosts ./task1 1000
-
-    OMP_NUM_THREADS=1 mpirun -n 1 --hostfile hosts ./task1 2000
-    OMP_NUM_THREADS=4 mpirun -n 1 --hostfile hosts ./task1 2000
-
-
-TASK 1.2 — Version A (MPI Scatter / Bcast / Gather)
-----------------------------------------------------
-Program arguments:  ./task1 <N> 1.2      (second arg selects the task: 1.1 | 1.2 | all)
-
-Each VM has 1 core (hosts: slots=1 each), so p > 3 needs --oversubscribe.
---map-by node spreads ranks round-robin: master, slave1, slave2, master, ...
-
-    make deploy                                   # copy the new binary to slave1/slave2 FIRST
-
-    mpirun -n 1 --hostfile hosts ./task1 2000 1.2
-    mpirun -n 2 --hostfile hosts ./task1 2000 1.2
-    mpirun -n 3 --hostfile hosts ./task1 2000 1.2
-    mpirun --oversubscribe --map-by node -n 4 --hostfile hosts ./task1 2000 1.2
-    mpirun --oversubscribe --map-by node -n 8 --hostfile hosts ./task1 2000 1.2
-
-    mpirun --oversubscribe --map-by node -n 4 --hostfile hosts ./task1 4000 1.2
-    mpirun --oversubscribe --map-by node -n 8 --hostfile hosts ./task1 4000 1.2
-
-The output lists which host each rank runs on, plus timings for
-Scatterv / Bcast / Multiply / Gatherv and the five check entries.
-
-
-TASK 1.3 — Version B (blocking ring)
+STEP 2 — Run everything (recommended)
 -------------------------------------
-Same commands as Task 1.2 — just swap the version inside the binary
-or compile separately if versions are split into separate files.
+    ./run_all.sh                 # Q1, Q2, Q3, then summarize_results.py
+    ./run_q1.sh                  # -> results/q1_outputs.txt
+    ./run_q2.sh                  # -> results/q2_outputs.txt
+    ./run_q3.sh                  # -> results/q3_outputs.txt
+    python3 summarize_results.py # -> results/summary.md (best-of-5 tables)
 
+Options (environment variables):
+    REPEATS=1         how many times each timing run is repeated (default 1;
+                      REPEATS=5 gives the best-of-five the assignment mentions)
+    HYBRID_THREADS=n  OpenMP threads for "one process per node" runs
+                      (default: nproc = cores per node)
+Example best-of-five: REPEATS=5 ./run_q1.sh
+
+Correctness runs are done once; timing runs are repeated REPEATS times.
+Approximate duration with REPEATS=1: Q1 ~20 min, Q2 ~3 min, Q3 ~20 min
+(with REPEATS=5: roughly 2 hours). Task 1.1 at N=4000 alone takes ~9 min
+because of the naive i-j-k loop.
+
+
+STEP 3 — Running a single experiment by hand
+--------------------------------------------
+General form:
+    OMP_NUM_THREADS=<t> mpirun -x OMP_NUM_THREADS [--oversubscribe --map-by node] \
+        -n <p> --hostfile hosts ./taskN <size> <task>
+
+  -x OMP_NUM_THREADS is REQUIRED for multi-node runs: Open MPI does not forward
+  the environment to remote nodes, so without it the ranks on slave1/slave2
+  ignore OMP_NUM_THREADS.
+
+
+QUESTION 1 — Dense matrix multiplication   ./task1 [N] [1.1|1.2|1.3|1.4|all]
+==========================================================================
+  N      matrix size (8 prints the whole C; 1000/2000/4000 print 5 entries)
+         no N  -> runs N = 8, 1000, 2000, 4000
+  task   default: all
+
+TASK 1.1 — i-j-k vs i-k-j vs OpenMP (rank 0 only)
+    OMP_NUM_THREADS=1 mpirun -n 1 --hostfile hosts ./task1 1000 1.1
+    OMP_NUM_THREADS=4 mpirun -n 1 --hostfile hosts ./task1 2000 1.1
+
+TASK 1.2 — Version A (Scatterv / Bcast / Gatherv)
+    mpirun -x OMP_NUM_THREADS -n 2 --hostfile hosts ./task1 2000 1.2
+    mpirun -x OMP_NUM_THREADS --oversubscribe --map-by node -n 8 --hostfile hosts ./task1 4000 1.2
+
+TASK 1.3 — Version B (blocking ring, even/odd send order)
+    mpirun -x OMP_NUM_THREADS -n 3 --hostfile hosts ./task1 4000 1.3
+    mpirun -x OMP_NUM_THREADS --oversubscribe --map-by node -n 8 --hostfile hosts ./task1 4000 1.3
 
 TASK 1.4 — Version C (non-blocking ring + OpenMP)
---------------------------------------------------
-One process per core:
-    OMP_NUM_THREADS=1 mpirun -n 8 --hostfile hosts ./task1 4000
+  One process per core:
+    OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS --oversubscribe --map-by node -n 8 --hostfile hosts ./task1 4000 1.4
+  Hybrid, one process per node, threads inside:
+    OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS -n 3 --hostfile hosts ./task1 4000 1.4
+    OMP_NUM_THREADS=4 mpirun -x OMP_NUM_THREADS -n 2 --hostfile hosts ./task1 4000 1.4
 
-Hybrid (one process per node, threads inside):
-    OMP_NUM_THREADS=4 mpirun -n 2 --hostfile hosts ./task1 4000
+Small test (N=8) must print Table 1(a) for p = 1, 2, 3:
+    mpirun -x OMP_NUM_THREADS -n 3 --hostfile hosts ./task1 8 1.3
+
+Expected five entries (Table 1b):
+  N     C(0,0)  C(0,1)  C(1,0)  C(N/2,N/2)  C(N-1,N-1)
+  1000      2      -2       7           3           9
+  2000      5     -10      15         -12          -5
+  4000     -7       5      20           9          17
 
 
-QUESTION 2 — Sparse matrix (social network)
-============================================
-Program arguments:  ./task2 [n] [task]
-    n     number of users (default: 100000 and 1000000)
-    task  2.1 | 2.2 | 2.3 | 2.4 | all   (default: all)
+QUESTION 2 — Sparse matrix (social network)   ./task2 [n] [2.1|2.2|2.3|2.4|all]
+================================================================================
+  n      number of users (no n -> runs 100000 and 1000000)
 Every version prints H(0,0), H(12345,7), H(n-1,15) with 12 decimals and
 "OK"/"MISMATCH" against Table 3, plus a per-process table (rows, links,
 compute, comm, wait, bytes received per step).
-
-Run everything and save the log (on master):
-    ./run_q2.sh                       # -> results/q2_outputs.txt
-
-Or individually (make deploy first!):
 
 TASK 2.1 — serial, OpenMP static vs dynamic,64 (one process)
     OMP_NUM_THREADS=1 mpirun -n 1 --hostfile hosts ./task2 100000 2.1
     OMP_NUM_THREADS=4 mpirun -n 1 --hostfile hosts ./task2 1000000 2.1
 
 TASK 2.2 — Version A, MPI_Allgatherv of the whole H every step
-    mpirun -n 2 --hostfile hosts ./task2 1000000 2.2
-    mpirun --oversubscribe --map-by node -n 8 --hostfile hosts ./task2 1000000 2.2
+    mpirun -x OMP_NUM_THREADS -n 2 --hostfile hosts ./task2 1000000 2.2
+    mpirun -x OMP_NUM_THREADS --oversubscribe --map-by node -n 8 --hostfile hosts ./task2 1000000 2.2
 
 TASK 2.3 — Version B, halo exchange (runs with AND without overlap)
-    mpirun -n 2 --hostfile hosts ./task2 1000000 2.3
-    mpirun --oversubscribe --map-by node -n 8 --hostfile hosts ./task2 1000000 2.3
+    mpirun -x OMP_NUM_THREADS --oversubscribe --map-by node -n 8 --hostfile hosts ./task2 1000000 2.3
 
 TASK 2.4 — equal-rows vs equal-links blocks (Version B)
-    mpirun --oversubscribe --map-by node -n 4 --hostfile hosts ./task2 1000000 2.4
-    mpirun --oversubscribe --map-by node -n 8 --hostfile hosts ./task2 1000000 2.4
+    mpirun -x OMP_NUM_THREADS --oversubscribe --map-by node -n 4 --hostfile hosts ./task2 1000000 2.4
   Hybrid, one process per node:
-    OMP_NUM_THREADS=<cores per node> mpirun -n 3 --hostfile hosts ./task2 1000000 2.4
+    OMP_NUM_THREADS=<cores per node> mpirun -x OMP_NUM_THREADS -n 3 --hostfile hosts ./task2 1000000 2.4
 
 Expected (Table 3, after T = 10 steps):
   n          links       H(0,0)          H(12345,7)      H(n-1,15)
@@ -109,34 +118,40 @@ Expected (Table 3, after T = 10 steps):
   1,000,000  10,160,271  0.500882792529  0.499154198420  0.492279183027
 
 
-CORRECTNESS CHECKS (via make targets)
---------------------------------------
-    make test1       # run all Q1 tests (p=1/2/4/8, threads=1/2/4)
-    make test2       # Q2, n=100000, p=1/3/7/8 — every line must say OK
+QUESTION 3 — Parallel training all-reduce   ./task3 [m] [3.1|3.2|3.2t|3.3|all]
+================================================================================
+  m      weight matrix size (default 512; 3.3 always uses 1024)
+  3.1    training with (a) MPI_Reduce + MPI_Bcast and (b) MPI_Allreduce
+  3.2    training with ring_allreduce + benchmark of all three all-reduces
+         on 1 KB / 1 MB / 64 MB (mean of 50 calls, needs p >= 2; slow: 1.5-8 min)
+  3.2t   training with ring_allreduce only (no benchmark)
+  3.3    scaling study with the best all-reduce (MPI_Allreduce), m = 1024
+Every process prints Table 4(b) so you can see all weights are identical.
+
+    mpirun -x OMP_NUM_THREADS -n 3 --hostfile hosts ./task3 512 3.1
+    mpirun -x OMP_NUM_THREADS --oversubscribe --map-by node -n 4 --hostfile hosts ./task3 512 3.2
+    mpirun -x OMP_NUM_THREADS --oversubscribe --map-by node -n 8 --hostfile hosts ./task3 1024 3.3
+  Hybrid, one process per node:
+    OMP_NUM_THREADS=<cores per node> mpirun -x OMP_NUM_THREADS -n 3 --hostfile hosts ./task3 1024 3.3
+
+Expected (Table 4):
+  m      G0(1,2)  G0(m-1,m-1)  G7(m-1,m-1)
+  512        33           24           27
+  1024       33            5          -20
+  m      W0(0,0)            W0(1,2)              W7(m-1,m-1)
+  512    0.0001220703125    -0.000152587890625   -0.00079345703125
+  1024   0.0001220703125    -0.000152587890625    0.0008697509765625
 
 
-EXPECTED VALUES
----------------
-N=8 full matrix (Table 1a):
-      col  0    1    2    3    4    5    6    7
-  row 0:   0    6   -8   -2  -11    0    6   -8
-  row 1:  17  -11    1   -2  -10   17  -11    1
-  row 2:  -8    0    3   -9   19   -8    0    3
-  row 3:  -5    4   -2   12    6   -5    4   -2
-  row 4:   5   -6   -7   12  -14    5   -6   -7
-  row 5:   1   -9   16   -9    1    1   -9   16
-  row 6: -10   16   -3   -2    9  -10   16   -3
-  row 7:   0    6   -8   -2  -11    0    6   -8
-
-Five entries (Table 1b):
-  N     C(0,0)  C(0,1)  C(1,0)  C(N/2,N/2)  C(N-1,N-1)
-  1000      2      -2       7           3           9
-  2000      5     -10      15         -12          -5
-  4000     -7       5      20           9          17
+QUICK CORRECTNESS CHECKS (make targets, single machine, no hostfile)
+--------------------------------------------------------------------
+    make test1       # Q1, p = 1/2/3/4/8, threads = 1/2/4
+    make test2       # Q2, n = 100000, p = 1/3/7/8 (uses hostfile) — every line must say OK
+    make test3       # Q3, m = 512/1024, p = 1/2/3/4/8
 
 
-NOTES
------
+NOTES / TROUBLESHOOTING
+-----------------------
 - Cluster network: each VM has a NAT adapter (enp0s3) with the SAME IP
   10.0.2.15 on every machine, which makes MPI hang ("No route to host").
   ~/.openmpi/mca-params.conf and ~/.prte/mca-params.conf on ALL nodes
@@ -146,14 +161,16 @@ NOTES
   (one-off equivalent: mpirun --mca btl_tcp_if_include 192.168.56.0/24
    --mca oob_tcp_if_include 192.168.56.0/24 ...)
 
-- Every node must run the SAME binary. After every `make`, run `make deploy`.
-  Mismatched binaries on master/slaves make the job hang.
+- "plm:ssh: Warning: setpgid(...) failed" lines are harmless launcher noise;
+  the run scripts filter them out.
 
-- If mpirun hangs, try adding --oversubscribe flag:
-      mpirun --oversubscribe -n 4 ./task1 1000
+- Each VM has ONE core, so OpenMP threads > 1 on a node time-share that core:
+  they can only show the threading overhead, not a speedup.
 
-- To clean the build:
-      make clean
+- Memory: 1.6 GiB per node. Q1 N=4000 Version A with p=8 puts 3 ranks on
+  master (rank 0 holds A, B and C = 384 MiB, plus 128 MiB of B per other rank).
+
+- To clean the build:  make clean
 
 - Local testing on the WSL laptop (NOT the cluster): MPI_Init hangs there
   because one of hwloc's GPU plugins hangs on WSL. Skip those plugins:

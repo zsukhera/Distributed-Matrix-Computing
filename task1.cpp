@@ -104,11 +104,32 @@ static void print_five_entries(const double* C, int N)
          << "\n" << setprecision(6) << defaultfloat;
 }
 
-static double elapsed_max(double t0)
+/* Time since t0 on the slowest process (returned on rank 0).
+   If local != nullptr, this process's own time is stored there too. */
+static double elapsed_max(double t0, double* local = nullptr)
 {
     double t_local = MPI_Wtime() - t0, t_max;
+    if (local) *local = t_local;
     MPI_Reduce(&t_local, &t_max, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
     return t_max;
+}
+
+/* Collective: every process sends its computation and communication time to
+   rank 0 with MPI_Gather, and rank 0 prints one line per process. */
+static void print_per_rank(double t_comp, double t_comm, int rank, int size)
+{
+    double mine[2] = {t_comp, t_comm};
+    vector<double> all(rank == 0 ? 2 * (size_t)size : 0);
+    MPI_Gather(mine, 2, MPI_DOUBLE, all.data(), 2, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    if (rank == 0) {
+        cout << "Per-process times:\n  rank   compute(s)      comm(s)\n";
+        for (int r = 0; r < size; r++)
+            cout << "  " << setw(4) << r << fixed << setprecision(6)
+                 << "   " << setw(10) << all[2 * r]
+                 << "   " << setw(10) << all[2 * r + 1] << "\n";
+        cout << setprecision(6) << defaultfloat;
+        cout.flush();
+    }
 }
 
 static int rows_of(int r, int N, int p)  { return N / p + (r < N % p ? 1 : 0); }
@@ -236,19 +257,20 @@ static void task1_2_one(int N, int rank, int size)
     else
         MPI_Scatterv(nullptr, counts, displs, MPI_DOUBLE,
                      local_A, counts[rank], MPI_DOUBLE, 0, MPI_COMM_WORLD);
-    double t_scatter = elapsed_max(t0);
+    double l_scatter, l_bcast, l_mult, l_gather;   /* this process's own times */
+    double t_scatter = elapsed_max(t0, &l_scatter);
 
     t0 = MPI_Wtime();
     MPI_Bcast(B, N * N, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-    double t_bcast = elapsed_max(t0);
+    double t_bcast = elapsed_max(t0, &l_bcast);
 
     t0 = MPI_Wtime();
     multiply_ikj_omp(local_A, B, local_C, my_rows, N);
-    double t_mult = elapsed_max(t0);
+    double t_mult = elapsed_max(t0, &l_mult);
 
     t0 = MPI_Wtime();
     gather_C(local_C, C_full, counts, displs, rank);
-    double t_gather = elapsed_max(t0);
+    double t_gather = elapsed_max(t0, &l_gather);
     double t_total  = elapsed_max(t_start);
 
     if (rank == 0) {
@@ -262,6 +284,9 @@ static void task1_2_one(int N, int rank, int size)
              << "Memory for B per process: "
              << (double)N * N * sizeof(double) / (1024.0 * 1024.0)
              << " MiB (x" << size << " copies)\n";
+    }
+    print_per_rank(l_mult, l_scatter + l_bcast + l_gather, rank, size);
+    if (rank == 0) {
         if (N == 8) print_full_matrix(C_full, N);
         else        print_five_entries(C_full, N);
     }
@@ -345,6 +370,7 @@ static void task1_3_one(int N, int rank, int size)
              << (double)N * N * sizeof(double) / (1024.0 * 1024.0)
              << " MiB for Version A's full B)\n";
     }
+    print_per_rank(t_mult_total, t_ring_total, rank, size);
 
     /* N=8: gather to rank 0 (for checking); large N: owning process prints its entries. */
     double* C_full = nullptr;
@@ -453,6 +479,7 @@ static void task1_4_one(int N, int rank, int size)
                  << "   " << setw(10) << step_wait_max[s] << "\n";
         cout << setprecision(6) << defaultfloat;
     }
+    print_per_rank(t_mult_total, t_wait_total, rank, size);
 
     /* N=8: gather to rank 0 (for checking); large N: owning process prints its entries. */
     double* C_full = nullptr;

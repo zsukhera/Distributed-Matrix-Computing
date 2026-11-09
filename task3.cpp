@@ -25,7 +25,8 @@
  *       m=1024: W0(0,0)=0.0001220703125  W0(1,2)=-0.000152587890625  W7(m-1,m-1)=0.0008697509765625
  *
  * Build:  make task3
- * Run:    mpirun -n <p> --hostfile hosts ./task3 [m] [task]
+ * Run:    mpirun -n <p> --hostfile hosts ./task3 [m] [3.1|3.2|3.2t|3.3|all]
+ *         (3.2t = ring all-reduce training only, without the 1KB/1MB/64MB benchmark)
  */
 
 #include <cmath>
@@ -300,6 +301,20 @@ static TimingResult train(int m, int rank, int size, AllreduceFn allreduce_fn,
         fflush(stdout);
     }
 
+    /* Every process's own compute / all-reduce time per step, collected on
+       rank 0 with MPI_Gather (one line per process). */
+    {
+        double mine[2] = {acc.compute / S, acc.allreduce / S};
+        vector<double> all(rank == 0 ? 2 * (size_t)size : 0);
+        MPI_Gather(mine, 2, MPI_DOUBLE, all.data(), 2, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+        if (rank == 0) {
+            printf("  Per-process times per step:\n  rank   compute(s)  allreduce(s)\n");
+            for (int r = 0; r < size; r++)
+                printf("  %4d   %10.6f    %10.6f\n", r, all[2 * r], all[2 * r + 1]);
+            fflush(stdout);
+        }
+    }
+
     /* Table 4(b): weights after S steps.
      * all_procs_print=true (Task 3.3) means every rank prints to verify
      * that the all-reduce left all processes with identical weights. */
@@ -434,7 +449,7 @@ int main(int argc, char* argv[])
     if (argc > 1) {
         m = atoi(argv[1]);
         if (m <= 0) {
-            if (rank == 0) fprintf(stderr, "Usage: %s [m] [3.1|3.2|3.3|all]\n", argv[0]);
+            if (rank == 0) fprintf(stderr, "Usage: %s [m] [3.1|3.2|3.2t|3.3|all]\n", argv[0]);
             MPI_Finalize(); return 1;
         }
     }
@@ -451,9 +466,11 @@ int main(int argc, char* argv[])
         train(m, rank, size, allreduce_reduce_bcast, "Task 3.1a (Reduce+Bcast)", true);
         train(m, rank, size, allreduce_builtin,      "Task 3.1b (Allreduce)",    true);
     }
-    if (all || task == "3.2") {
+    /* "3.2t" = ring training only (no benchmark), used for repeated timing runs */
+    if (all || task == "3.2" || task == "3.2t") {
         train(m, rank, size, ring_allreduce, "Task 3.2 (Ring all-reduce)", true);
-        benchmark_allreduce(rank, size);  /* 1KB/1MB/64MB across all three methods */
+        if (task != "3.2t")
+            benchmark_allreduce(rank, size);  /* 1KB/1MB/64MB across all three methods */
     }
     if (all || task == "3.3")
         task3_3(rank, size);  /* always uses m=1024 as per PDF spec */

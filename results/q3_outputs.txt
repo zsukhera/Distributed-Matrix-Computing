@@ -1,0 +1,344 @@
+Q3 run log — Mon Nov  9 02:36:15 PM UTC 2026  host=master  commit=965b48d + uncommitted changes
+Cluster: master, slave1, slave2 (slots=1 each). p > 3 uses --oversubscribe --map-by node.
+REPEATS=1 (timing runs; report the best)  HYBRID_THREADS=1
+
+######## BUILD + DEPLOY ########
+================================================================
+$ make task3
+================================================================
+mpicxx -O2 -fopenmp -std=c++17 -Wall -Wextra -o task3 task3.cpp -fopenmp
+[exit=0  wall=1s]
+
+================================================================
+$ make deploy
+================================================================
+mpicxx -O2 -fopenmp -std=c++17 -Wall -Wextra -o task1 task1.cpp -fopenmp
+mpicxx -O2 -fopenmp -std=c++17 -Wall -Wextra -o task2 task2.cpp -fopenmp
+mpicxx -O2 -fopenmp -std=c++17 -Wall -Wextra -o task3 task3.cpp -fopenmp
+Deploying to slave1...
+  task1
+  task2
+  task3
+Deploying to slave2...
+  task1
+  task2
+  task3
+[exit=0  wall=7s]
+
+######## CORRECTNESS — m=512, Table 4, p=1,2,3,4 (all three all-reduces) ########
+================================================================
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS -n 1 --hostfile hosts ./task3 512 3.1
+================================================================
+Processes=1, threads=1, m=512, L=8, S=5, batch=512
+
+  Table 4(a) m=512: G0(1,2)=33  G0(511,511)=24  G7(511,511)=27
+
+--- Task 3.1a (Reduce+Bcast): m=512, p=1, threads=1 ---
+  Total:     2.290841 s
+  Compute:   0.442127 s/step  (96.5%)
+  Allreduce: 0.000003 s/step  (0.0%)
+  Per-process times per step:
+  rank   compute(s)  allreduce(s)
+     0     0.442127      0.000003
+  [rank 0] Table 4(b) m=512: W0(0,0)=0.0001220703125  W0(1,2)=-0.000152587890625  W7(511,511)=-0.00079345703125
+
+  Table 4(a) m=512: G0(1,2)=33  G0(511,511)=24  G7(511,511)=27
+
+--- Task 3.1b (Allreduce): m=512, p=1, threads=1 ---
+  Total:     2.774664 s
+  Compute:   0.540384 s/step  (97.4%)
+  Allreduce: 0.000021 s/step  (0.0%)
+  Per-process times per step:
+  rank   compute(s)  allreduce(s)
+     0     0.540384      0.000021
+  [rank 0] Table 4(b) m=512: W0(0,0)=0.0001220703125  W0(1,2)=-0.000152587890625  W7(511,511)=-0.00079345703125
+[exit=0  wall=6s]
+
+================================================================
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS -n 2 --hostfile hosts ./task3 512 3.1
+================================================================
+Processes=2, threads=1, m=512, L=8, S=5, batch=512
+
+  Table 4(a) m=512: G0(1,2)=33  G0(511,511)=24  G7(511,511)=27
+
+--- Task 3.1a (Reduce+Bcast): m=512, p=2, threads=1 ---
+  Total:     2.176362 s
+  Compute:   0.231290 s/step  (53.1%)
+  Allreduce: 0.215432 s/step  (49.5%)
+  Per-process times per step:
+  rank   compute(s)  allreduce(s)
+     0     0.231290      0.176640
+     1     0.204793      0.215432
+  [rank 0] Table 4(b) m=512: W0(0,0)=0.0001220703125  W0(1,2)=-0.000152587890625  W7(511,511)=-0.00079345703125
+  [rank 1] Table 4(b) m=512: W0(0,0)=0.0001220703125  W0(1,2)=-0.000152587890625  W7(511,511)=-0.00079345703125
+
+  Table 4(a) m=512: G0(1,2)=33  G0(511,511)=24  G7(511,511)=27
+
+--- Task 3.1b (Allreduce): m=512, p=2, threads=1 ---
+  Total:     2.489999 s
+  Compute:   0.301929 s/step  (60.6%)
+  Allreduce: 0.276344 s/step  (55.5%)
+  Per-process times per step:
+  rank   compute(s)  allreduce(s)
+     0     0.301929      0.176042
+     1     0.203347      0.276344
+  [rank 0] Table 4(b) m=512: W0(0,0)=0.0001220703125  W0(1,2)=-0.000152587890625  W7(511,511)=-0.00079345703125
+  [rank 1] Table 4(b) m=512: W0(0,0)=0.0001220703125  W0(1,2)=-0.000152587890625  W7(511,511)=-0.00079345703125
+[exit=0  wall=5s]
+
+================================================================
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS -n 3 --hostfile hosts ./task3 512 3.1
+================================================================
+Processes=3, threads=1, m=512, L=8, S=5, batch=512
+
+  Table 4(a) m=512: G0(1,2)=33  G0(511,511)=24  G7(511,511)=27
+
+--- Task 3.1a (Reduce+Bcast): m=512, p=3, threads=1 ---
+  Total:     2.289068 s
+  Compute:   0.175594 s/step  (38.4%)
+  Allreduce: 0.299543 s/step  (65.4%)
+  Per-process times per step:
+  rank   compute(s)  allreduce(s)
+     0     0.175594      0.257585
+     1     0.142439      0.299332
+     2     0.140579      0.299543
+  [rank 0] Table 4(b) m=512: W0(0,0)=0.0001220703125  W0(1,2)=-0.000152587890625  W7(511,511)=-0.00079345703125
+  [rank 1] Table 4(b) m=512: W0(0,0)=0.0001220703125  W0(1,2)=-0.000152587890625  W7(511,511)=-0.00079345703125
+  [rank 2] Table 4(b) m=512: W0(0,0)=0.0001220703125  W0(1,2)=-0.000152587890625  W7(511,511)=-0.00079345703125
+
+  Table 4(a) m=512: G0(1,2)=33  G0(511,511)=24  G7(511,511)=27
+
+--- Task 3.1b (Allreduce): m=512, p=3, threads=1 ---
+  Total:     3.146096 s
+  Compute:   0.192643 s/step  (30.6%)
+  Allreduce: 0.472100 s/step  (75.0%)
+  Per-process times per step:
+  rank   compute(s)  allreduce(s)
+     0     0.192643      0.409301
+     1     0.139055      0.472100
+     2     0.138654      0.453663
+  [rank 0] Table 4(b) m=512: W0(0,0)=0.0001220703125  W0(1,2)=-0.000152587890625  W7(511,511)=-0.00079345703125
+  [rank 1] Table 4(b) m=512: W0(0,0)=0.0001220703125  W0(1,2)=-0.000152587890625  W7(511,511)=-0.00079345703125
+  [rank 2] Table 4(b) m=512: W0(0,0)=0.0001220703125  W0(1,2)=-0.000152587890625  W7(511,511)=-0.00079345703125
+[exit=0  wall=6s]
+
+================================================================
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS --oversubscribe --map-by node -n 4 --hostfile hosts ./task3 512 3.1
+================================================================
+Processes=4, threads=1, m=512, L=8, S=5, batch=512
+
+  Table 4(a) m=512: G0(1,2)=33  G0(511,511)=24  G7(511,511)=27
+
+--- Task 3.1a (Reduce+Bcast): m=512, p=4, threads=1 ---
+  Total:     3.651230 s
+  Compute:   0.229340 s/step  (31.4%)
+  Allreduce: 0.596345 s/step  (81.7%)
+  Per-process times per step:
+  rank   compute(s)  allreduce(s)
+     0     0.229340      0.421574
+     1     0.107130      0.568938
+     2     0.108029      0.596345
+     3     0.174467      0.536310
+  [rank 0] Table 4(b) m=512: W0(0,0)=0.0001220703125  W0(1,2)=-0.000152587890625  W7(511,511)=-0.00079345703125
+  [rank 1] Table 4(b) m=512: W0(0,0)=0.0001220703125  W0(1,2)=-0.000152587890625  W7(511,511)=-0.00079345703125
+  [rank 2] Table 4(b) m=512: W0(0,0)=0.0001220703125  W0(1,2)=-0.000152587890625  W7(511,511)=-0.00079345703125
+  [rank 3] Table 4(b) m=512: W0(0,0)=0.0001220703125  W0(1,2)=-0.000152587890625  W7(511,511)=-0.00079345703125
+
+  Table 4(a) m=512: G0(1,2)=33  G0(511,511)=24  G7(511,511)=27
+
+--- Task 3.1b (Allreduce): m=512, p=4, threads=1 ---
+  Total:     7.155158 s
+  Compute:   0.245827 s/step  (17.2%)
+  Allreduce: 1.300812 s/step  (90.9%)
+  Per-process times per step:
+  rank   compute(s)  allreduce(s)
+     0     0.245827      1.151380
+     1     0.104729      1.300812
+     2     0.110368      1.293173
+     3     0.239435      1.153853
+  [rank 0] Table 4(b) m=512: W0(0,0)=0.0001220703125  W0(1,2)=-0.000152587890625  W7(511,511)=-0.00079345703125
+  [rank 1] Table 4(b) m=512: W0(0,0)=0.0001220703125  W0(1,2)=-0.000152587890625  W7(511,511)=-0.00079345703125
+  [rank 2] Table 4(b) m=512: W0(0,0)=0.0001220703125  W0(1,2)=-0.000152587890625  W7(511,511)=-0.00079345703125
+  [rank 3] Table 4(b) m=512: W0(0,0)=0.0001220703125  W0(1,2)=-0.000152587890625  W7(511,511)=-0.00079345703125
+[exit=0  wall=12s]
+
+================================================================
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS -n 1 --hostfile hosts ./task3 512 3.2t
+================================================================
+Processes=1, threads=1, m=512, L=8, S=5, batch=512
+
+  Table 4(a) m=512: G0(1,2)=33  G0(511,511)=24  G7(511,511)=27
+
+--- Task 3.2 (Ring all-reduce): m=512, p=1, threads=1 ---
+  Total:     2.147684 s
+  Compute:   0.417600 s/step  (97.2%)
+  Allreduce: 0.000002 s/step  (0.0%)
+  Per-process times per step:
+  rank   compute(s)  allreduce(s)
+     0     0.417600      0.000002
+  [rank 0] Table 4(b) m=512: W0(0,0)=0.0001220703125  W0(1,2)=-0.000152587890625  W7(511,511)=-0.00079345703125
+[exit=0  wall=3s]
+
+================================================================
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS -n 2 --hostfile hosts ./task3 512 3.2t
+================================================================
+Processes=2, threads=1, m=512, L=8, S=5, batch=512
+
+  Table 4(a) m=512: G0(1,2)=33  G0(511,511)=24  G7(511,511)=27
+
+--- Task 3.2 (Ring all-reduce): m=512, p=2, threads=1 ---
+  Total:     2.172568 s
+  Compute:   0.270119 s/step  (62.2%)
+  Allreduce: 0.219911 s/step  (50.6%)
+  Per-process times per step:
+  rank   compute(s)  allreduce(s)
+     0     0.270119      0.143927
+     1     0.199605      0.219911
+  [rank 0] Table 4(b) m=512: W0(0,0)=0.0001220703125  W0(1,2)=-0.000152587890625  W7(511,511)=-0.00079345703125
+  [rank 1] Table 4(b) m=512: W0(0,0)=0.0001220703125  W0(1,2)=-0.000152587890625  W7(511,511)=-0.00079345703125
+[exit=0  wall=3s]
+
+================================================================
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS -n 3 --hostfile hosts ./task3 512 3.2t
+================================================================
+Processes=3, threads=1, m=512, L=8, S=5, batch=512
+
+  Table 4(a) m=512: G0(1,2)=33  G0(511,511)=24  G7(511,511)=27
+
+--- Task 3.2 (Ring all-reduce): m=512, p=3, threads=1 ---
+  Total:     1.883018 s
+  Compute:   0.152217 s/step  (40.4%)
+  Allreduce: 0.214469 s/step  (56.9%)
+  Per-process times per step:
+  rank   compute(s)  allreduce(s)
+     0     0.152217      0.205665
+     1     0.141181      0.214469
+     2     0.141152      0.212690
+  [rank 0] Table 4(b) m=512: W0(0,0)=0.0001220703125  W0(1,2)=-0.000152587890625  W7(511,511)=-0.00079345703125
+  [rank 1] Table 4(b) m=512: W0(0,0)=0.0001220703125  W0(1,2)=-0.000152587890625  W7(511,511)=-0.00079345703125
+  [rank 2] Table 4(b) m=512: W0(0,0)=0.0001220703125  W0(1,2)=-0.000152587890625  W7(511,511)=-0.00079345703125
+[exit=0  wall=3s]
+
+================================================================
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS --oversubscribe --map-by node -n 4 --hostfile hosts ./task3 512 3.2t
+================================================================
+Processes=4, threads=1, m=512, L=8, S=5, batch=512
+
+  Table 4(a) m=512: G0(1,2)=33  G0(511,511)=24  G7(511,511)=27
+
+--- Task 3.2 (Ring all-reduce): m=512, p=4, threads=1 ---
+  Total:     2.776180 s
+  Compute:   0.262215 s/step  (47.2%)
+  Allreduce: 0.423834 s/step  (76.3%)
+  Per-process times per step:
+  rank   compute(s)  allreduce(s)
+     0     0.261689      0.245975
+     1     0.110151      0.423834
+     2     0.109822      0.423818
+     3     0.262215      0.271439
+  [rank 0] Table 4(b) m=512: W0(0,0)=0.0001220703125  W0(1,2)=-0.000152587890625  W7(511,511)=-0.00079345703125
+  [rank 1] Table 4(b) m=512: W0(0,0)=0.0001220703125  W0(1,2)=-0.000152587890625  W7(511,511)=-0.00079345703125
+  [rank 2] Table 4(b) m=512: W0(0,0)=0.0001220703125  W0(1,2)=-0.000152587890625  W7(511,511)=-0.00079345703125
+  [rank 3] Table 4(b) m=512: W0(0,0)=0.0001220703125  W0(1,2)=-0.000152587890625  W7(511,511)=-0.00079345703125
+[exit=0  wall=3s]
+
+######## TASK 3.2 — all-reduce benchmark 1 KB / 1 MB / 64 MB (each value = mean of 50 calls) ########
+================================================================
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS -n 2 --hostfile hosts ./task3 512 3.2
+================================================================
+Processes=2, threads=1, m=512, L=8, S=5, batch=512
+
+  Table 4(a) m=512: G0(1,2)=33  G0(511,511)=24  G7(511,511)=27
+
+--- Task 3.2 (Ring all-reduce): m=512, p=2, threads=1 ---
+  Total:     2.109053 s
+  Compute:   0.244776 s/step  (58.0%)
+  Allreduce: 0.197661 s/step  (46.9%)
+  Per-process times per step:
+  rank   compute(s)  allreduce(s)
+     0     0.244776      0.159589
+     1     0.205725      0.197661
+  [rank 0] Table 4(b) m=512: W0(0,0)=0.0001220703125  W0(1,2)=-0.000152587890625  W7(511,511)=-0.00079345703125
+  [rank 1] Table 4(b) m=512: W0(0,0)=0.0001220703125  W0(1,2)=-0.000152587890625  W7(511,511)=-0.00079345703125
+
+--- Task 3.2 all-reduce benchmark: p=2 ---
+  Method                 1 KB (s)       1 MB (s)      64 MB (s)
+  Reduce+Bcast           0.000532       0.012673       0.630687
+  Allreduce              0.000541       0.010179       0.532369
+  Ring                   0.001025       0.009977       0.559659
+  (ring is slow for small data: needs 2*(p-1) messages per call)
+[exit=0  wall=93s]
+
+================================================================
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS --oversubscribe --map-by node -n 4 --hostfile hosts ./task3 512 3.2
+================================================================
+Processes=4, threads=1, m=512, L=8, S=5, batch=512
+
+  Table 4(a) m=512: G0(1,2)=33  G0(511,511)=24  G7(511,511)=27
+
+--- Task 3.2 (Ring all-reduce): m=512, p=4, threads=1 ---
+  Total:     2.543647 s
+  Compute:   0.220942 s/step  (43.4%)
+  Allreduce: 0.371010 s/step  (72.9%)
+  Per-process times per step:
+  rank   compute(s)  allreduce(s)
+     0     0.219448      0.242773
+     1     0.117744      0.367067
+     2     0.111919      0.371010
+     3     0.220942      0.263858
+  [rank 0] Table 4(b) m=512: W0(0,0)=0.0001220703125  W0(1,2)=-0.000152587890625  W7(511,511)=-0.00079345703125
+  [rank 1] Table 4(b) m=512: W0(0,0)=0.0001220703125  W0(1,2)=-0.000152587890625  W7(511,511)=-0.00079345703125
+  [rank 2] Table 4(b) m=512: W0(0,0)=0.0001220703125  W0(1,2)=-0.000152587890625  W7(511,511)=-0.00079345703125
+  [rank 3] Table 4(b) m=512: W0(0,0)=0.0001220703125  W0(1,2)=-0.000152587890625  W7(511,511)=-0.00079345703125
+
+--- Task 3.2 all-reduce benchmark: p=4 ---
+  Method                 1 KB (s)       1 MB (s)      64 MB (s)
+  Reduce+Bcast           0.001246       0.033664       1.589325
+  Allreduce              0.001743       0.064982       4.210047
+  Ring                   0.003253       0.022548       0.886119
+  (ring is slow for small data: needs 2*(p-1) messages per call)
+[exit=0  wall=352s]
+
+================================================================
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS --oversubscribe --map-by node -n 8 --hostfile hosts ./task3 512 3.2
+================================================================
+Processes=8, threads=1, m=512, L=8, S=5, batch=512
+
+  Table 4(a) m=512: G0(1,2)=33  G0(511,511)=24  G7(511,511)=27
+
+--- Task 3.2 (Ring all-reduce): m=512, p=8, threads=1 ---
+  Total:     5.400330 s
+  Compute:   0.182976 s/step  (16.9%)
+  Allreduce: 0.922497 s/step  (85.4%)
+  Per-process times per step:
+  rank   compute(s)  allreduce(s)
+     0     0.168370      0.820117
+     1     0.167618      0.823838
+     2     0.117790      0.896369
+     3     0.173370      0.828143
+     4     0.165181      0.850199
+     5     0.115267      0.922497
+     6     0.182976      0.825507
+     7     0.168666      0.840943
+  [rank 0] Table 4(b) m=512: W0(0,0)=0.0001220703125  W0(1,2)=-0.000152587890625  W7(511,511)=-0.00079345703125
+  [rank 1] Table 4(b) m=512: W0(0,0)=0.0001220703125  W0(1,2)=-0.000152587890625  W7(511,511)=-0.00079345703125
+  [rank 2] Table 4(b) m=512: W0(0,0)=0.0001220703125  W0(1,2)=-0.000152587890625  W7(511,511)=-0.00079345703125
+  [rank 3] Table 4(b) m=512: W0(0,0)=0.0001220703125  W0(1,2)=-0.000152587890625  W7(511,511)=-0.00079345703125
+  [rank 4] Table 4(b) m=512: W0(0,0)=0.0001220703125  W0(1,2)=-0.000152587890625  W7(511,511)=-0.00079345703125
+  [rank 5] Table 4(b) m=512: W0(0,0)=0.0001220703125  W0(1,2)=-0.000152587890625  W7(511,511)=-0.00079345703125
+  [rank 6] Table 4(b) m=512: W0(0,0)=0.0001220703125  W0(1,2)=-0.000152587890625  W7(511,511)=-0.00079345703125
+  [rank 7] Table 4(b) m=512: W0(0,0)=0.0001220703125  W0(1,2)=-0.000152587890625  W7(511,511)=-0.00079345703125
+
+--- Task 3.2 all-reduce benchmark: p=8 ---
+  Method                 1 KB (s)       1 MB (s)      64 MB (s)
+  Reduce+Bcast           0.060968       0.094178       4.004160
+  Allreduce              0.059639       0.694754      37.775722
+[slave2:00000] *** An error occurred in Socket closed
+[slave2:00000] *** reported by process [2074017793,2]
+[slave2:00000] *** on a NULL communicator
+[slave2:00000] *** Unknown error
+[slave2:00000] *** MPI_ERRORS_ARE_FATAL (processes in this communicator will now abort,
+[slave2:00000] ***    and MPI will try to terminate your MPI job as well)
+grep: (standard input): binary file matches
+
+[STOPPED MANUALLY Mon Nov  9 03:23:48 PM UTC 2026 during the p=8 benchmark (Ring row at 64 MB not finished); the m=1024 runs of Tasks 3.1/3.2/3.3 were not run]

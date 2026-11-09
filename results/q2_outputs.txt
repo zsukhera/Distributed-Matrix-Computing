@@ -1,0 +1,1158 @@
+Q2 run log — Mon Nov  9 02:34:22 PM UTC 2026  host=master  commit=965b48d + uncommitted changes
+Cluster: master, slave1, slave2 (slots=1 each). p > 3 uses --oversubscribe --map-by node.
+REPEATS=1 (timing runs; report the best)  HYBRID_THREADS=1
+
+######## BUILD + DEPLOY ########
+================================================================
+$ make task2
+================================================================
+mpicxx -O2 -fopenmp -std=c++17 -Wall -Wextra -o task2 task2.cpp -fopenmp
+[exit=0  wall=1s]
+
+================================================================
+$ make deploy
+================================================================
+mpicxx -O2 -fopenmp -std=c++17 -Wall -Wextra -o task1 task1.cpp -fopenmp
+mpicxx -O2 -fopenmp -std=c++17 -Wall -Wextra -o task2 task2.cpp -fopenmp
+mpicxx -O2 -fopenmp -std=c++17 -Wall -Wextra -o task3 task3.cpp -fopenmp
+Deploying to slave1...
+  task1
+  task2
+  task3
+Deploying to slave2...
+  task1
+  task2
+  task3
+[exit=0  wall=6s]
+
+######## CORRECTNESS — n=100000, every version (p=3 and 7 do not divide n) ########
+================================================================
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS -n 1 --hostfile hosts ./task2 100000 all
+================================================================
+Processes=1, OpenMP threads per process=1
+  rank 0 on master
+
+--- Task 2.1: n=100000, threads=1 ---
+  Total links: 1020227  (Table 3: 1020227  OK)
+
+Serial (Code 3): total 0.105257 s, per step 0.010526 s
+  H(0,0) = 0.493896795310   (Table 3: 0.493896795310  OK)
+  H(12345,7) = 0.497876802886   (Table 3: 0.497876802886  OK)
+  H(99999,15) = 0.497973641990   (Table 3: 0.497973641990  OK)
+
+OpenMP schedule(static): total 0.084283 s, per step 0.008428 s
+  H(0,0) = 0.493896795310   (Table 3: 0.493896795310  OK)
+  H(12345,7) = 0.497876802886   (Table 3: 0.497876802886  OK)
+  H(99999,15) = 0.497973641990   (Table 3: 0.497973641990  OK)
+
+OpenMP schedule(dynamic, 64): total 0.078586 s, per step 0.007859 s
+  H(0,0) = 0.493896795310   (Table 3: 0.493896795310  OK)
+  H(12345,7) = 0.497876802886   (Table 3: 0.497876802886  OK)
+  H(99999,15) = 0.497973641990   (Table 3: 0.497973641990  OK)
+
+Speedup over serial: static 1.249, dynamic 1.339
+
+Per-thread work (per step):
+  thread   static: links    busy(s)   dynamic: links    busy(s)
+       0         1020227   0.008422          1020227   0.007855
+
+--- Task 2.2 Version A (Allgatherv): n=100000, p=1, threads=1 ---
+  rank      rows      links   compute(s)    comm(s)    wait(s)   recv/step
+     0    100000    1020227     0.079089   0.014301   0.000000       0.0 KiB
+  Total links: 1020227  (Table 3: 1020227  OK)
+  Compute imbalance (max/avg): 1.000
+  Total time:    0.093402 s
+  Time per step: 0.009340 s
+  H(0,0) = 0.493896795310   (Table 3: 0.493896795310  OK)   [printed by rank 0]
+  H(12345,7) = 0.497876802886   (Table 3: 0.497876802886  OK)   [printed by rank 0]
+  H(99999,15) = 0.497973641990   (Table 3: 0.497973641990  OK)   [printed by rank 0]
+
+--- Task 2.3 Version B (halo, interior before Waitall): n=100000, p=1, threads=1 ---
+  rank      rows      links   compute(s)    comm(s)    wait(s)   recv/step
+     0    100000    1020227     0.081282   0.000155   0.000030      32.0 KiB
+  Total links: 1020227  (Table 3: 1020227  OK)
+  Compute imbalance (max/avg): 1.000
+  Total time:    0.081442 s
+  Time per step: 0.008144 s
+  H(0,0) = 0.493896795310   (Table 3: 0.493896795310  OK)   [printed by rank 0]
+  H(12345,7) = 0.497876802886   (Table 3: 0.497876802886  OK)   [printed by rank 0]
+  H(99999,15) = 0.497973641990   (Table 3: 0.497973641990  OK)   [printed by rank 0]
+
+--- Task 2.3 Version B (halo, all rows after Waitall): n=100000, p=1, threads=1 ---
+  rank      rows      links   compute(s)    comm(s)    wait(s)   recv/step
+     0    100000    1020227     0.079136   0.000127   0.000011      32.0 KiB
+  Total links: 1020227  (Table 3: 1020227  OK)
+  Compute imbalance (max/avg): 1.000
+  Total time:    0.079268 s
+  Time per step: 0.007927 s
+  H(0,0) = 0.493896795310   (Table 3: 0.493896795310  OK)   [printed by rank 0]
+  H(12345,7) = 0.497876802886   (Table 3: 0.497876802886  OK)   [printed by rank 0]
+  H(99999,15) = 0.497973641990   (Table 3: 0.497973641990  OK)   [printed by rank 0]
+
+--- Task 2.4 block boundaries (n=100000, p=1) ---
+  rank   equal rows: first user, rows   equal links: first user, rows
+     0                   0  100000                    0  100000
+
+--- Task 2.4 Version B, equal ROWS: n=100000, p=1, threads=1 ---
+  rank      rows      links   compute(s)    comm(s)    wait(s)   recv/step
+     0    100000    1020227     0.080284   0.000162   0.000020      32.0 KiB
+  Total links: 1020227  (Table 3: 1020227  OK)
+  Compute imbalance (max/avg): 1.000
+  Total time:    0.080450 s
+  Time per step: 0.008045 s
+  H(0,0) = 0.493896795310   (Table 3: 0.493896795310  OK)   [printed by rank 0]
+  H(12345,7) = 0.497876802886   (Table 3: 0.497876802886  OK)   [printed by rank 0]
+  H(99999,15) = 0.497973641990   (Table 3: 0.497973641990  OK)   [printed by rank 0]
+
+--- Task 2.4 Version B, equal LINKS (balanced): n=100000, p=1, threads=1 ---
+  rank      rows      links   compute(s)    comm(s)    wait(s)   recv/step
+     0    100000    1020227     0.096766   0.000128   0.000023      32.0 KiB
+  Total links: 1020227  (Table 3: 1020227  OK)
+  Compute imbalance (max/avg): 1.000
+  Total time:    0.096898 s
+  Time per step: 0.009690 s
+  H(0,0) = 0.493896795310   (Table 3: 0.493896795310  OK)   [printed by rank 0]
+  H(12345,7) = 0.497876802886   (Table 3: 0.497876802886  OK)   [printed by rank 0]
+  H(99999,15) = 0.497973641990   (Table 3: 0.497973641990  OK)   [printed by rank 0]
+[exit=0  wall=2s]
+
+================================================================
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS -n 2 --hostfile hosts ./task2 100000 all
+================================================================
+Processes=2, OpenMP threads per process=1
+  rank 0 on master
+  rank 1 on slave1
+
+--- Task 2.1: n=100000, threads=1 ---
+  Total links: 1020227  (Table 3: 1020227  OK)
+
+Serial (Code 3): total 0.104857 s, per step 0.010486 s
+  H(0,0) = 0.493896795310   (Table 3: 0.493896795310  OK)
+  H(12345,7) = 0.497876802886   (Table 3: 0.497876802886  OK)
+  H(99999,15) = 0.497973641990   (Table 3: 0.497973641990  OK)
+
+OpenMP schedule(static): total 0.086377 s, per step 0.008638 s
+  H(0,0) = 0.493896795310   (Table 3: 0.493896795310  OK)
+  H(12345,7) = 0.497876802886   (Table 3: 0.497876802886  OK)
+  H(99999,15) = 0.497973641990   (Table 3: 0.497973641990  OK)
+
+OpenMP schedule(dynamic, 64): total 0.086568 s, per step 0.008657 s
+  H(0,0) = 0.493896795310   (Table 3: 0.493896795310  OK)
+  H(12345,7) = 0.497876802886   (Table 3: 0.497876802886  OK)
+  H(99999,15) = 0.497973641990   (Table 3: 0.497973641990  OK)
+
+Speedup over serial: static 1.214, dynamic 1.211
+
+Per-thread work (per step):
+  thread   static: links    busy(s)   dynamic: links    busy(s)
+       0         1020227   0.008632          1020227   0.008650
+
+--- Task 2.2 Version A (Allgatherv): n=100000, p=2, threads=1 ---
+  rank      rows      links   compute(s)    comm(s)    wait(s)   recv/step
+     0     50000     620045     0.055070   0.493507   0.000000    6250.0 KiB
+     1     50000     400182     0.053104   0.493419   0.000000    6250.0 KiB
+  Total links: 1020227  (Table 3: 1020227  OK)
+  Compute imbalance (max/avg): 1.018
+  Total time:    0.548963 s
+  Time per step: 0.054896 s
+  H(0,0) = 0.493896795310   (Table 3: 0.493896795310  OK)   [printed by rank 0]
+  H(12345,7) = 0.497876802886   (Table 3: 0.497876802886  OK)   [printed by rank 0]
+  H(99999,15) = 0.497973641990   (Table 3: 0.497973641990  OK)   [printed by rank 1]
+
+--- Task 2.3 Version B (halo, interior before Waitall): n=100000, p=2, threads=1 ---
+  rank      rows      links   compute(s)    comm(s)    wait(s)   recv/step
+     0     50000     620045     0.057272   0.010282   0.002227      32.0 KiB
+     1     50000     400182     0.048677   0.022814   0.011547      32.0 KiB
+  Total links: 1020227  (Table 3: 1020227  OK)
+  Compute imbalance (max/avg): 1.081
+  Total time:    0.072687 s
+  Time per step: 0.007269 s
+  H(0,0) = 0.493896795310   (Table 3: 0.493896795310  OK)   [printed by rank 0]
+  H(12345,7) = 0.497876802886   (Table 3: 0.497876802886  OK)   [printed by rank 0]
+  H(99999,15) = 0.497973641990   (Table 3: 0.497973641990  OK)   [printed by rank 1]
+
+--- Task 2.3 Version B (halo, all rows after Waitall): n=100000, p=2, threads=1 ---
+  rank      rows      links   compute(s)    comm(s)    wait(s)   recv/step
+     0     50000     620045     0.061435   0.010472   0.001895      32.0 KiB
+     1     50000     400182     0.042079   0.027335   0.016951      32.0 KiB
+  Total links: 1020227  (Table 3: 1020227  OK)
+  Compute imbalance (max/avg): 1.187
+  Total time:    0.072212 s
+  Time per step: 0.007221 s
+  H(0,0) = 0.493896795310   (Table 3: 0.493896795310  OK)   [printed by rank 0]
+  H(12345,7) = 0.497876802886   (Table 3: 0.497876802886  OK)   [printed by rank 0]
+
+--- Task 2.4 block boundaries (n=100000, p=2) ---
+  rank   equal rows: first user, rows   equal links: first user, rows
+     0                   0   50000                    0   36263
+     1               50000   50000                36263   63737
+  H(99999,15) = 0.497973641990   (Table 3: 0.497973641990  OK)   [printed by rank 1]
+
+--- Task 2.4 Version B, equal ROWS: n=100000, p=2, threads=1 ---
+  rank      rows      links   compute(s)    comm(s)    wait(s)   recv/step
+     0     50000     620045     0.057538   0.009373   0.002331      32.0 KiB
+     1     50000     400182     0.041364   0.022426   0.015068      32.0 KiB
+  Total links: 1020227  (Table 3: 1020227  OK)
+  Compute imbalance (max/avg): 1.164
+  Total time:    0.068916 s
+  Time per step: 0.006892 s
+  H(0,0) = 0.493896795310   (Table 3: 0.493896795310  OK)   [printed by rank 0]
+  H(12345,7) = 0.497876802886   (Table 3: 0.497876802886  OK)   [printed by rank 0]
+  H(99999,15) = 0.497973641990   (Table 3: 0.497973641990  OK)   [printed by rank 1]
+
+--- Task 2.4 Version B, equal LINKS (balanced): n=100000, p=2, threads=1 ---
+  rank      rows      links   compute(s)    comm(s)    wait(s)   recv/step
+     0     36263     510116     0.044954   0.027191   0.016083      32.0 KiB
+     1     63737     510111     0.061678   0.013721   0.006160      32.0 KiB
+  Total links: 1020227  (Table 3: 1020227  OK)
+  Compute imbalance (max/avg): 1.157
+  Total time:    0.076979 s
+  Time per step: 0.007698 s
+  H(0,0) = 0.493896795310   (Table 3: 0.493896795310  OK)   [printed by rank 0]
+  H(12345,7) = 0.497876802886   (Table 3: 0.497876802886  OK)   [printed by rank 0]
+  H(99999,15) = 0.497973641990   (Table 3: 0.497973641990  OK)   [printed by rank 1]
+[exit=0  wall=1s]
+
+================================================================
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS -n 3 --hostfile hosts ./task2 100000 all
+================================================================
+Processes=3, OpenMP threads per process=1
+  rank 0 on master
+  rank 1 on slave1
+  rank 2 on slave2
+
+--- Task 2.1: n=100000, threads=1 ---
+  Total links: 1020227  (Table 3: 1020227  OK)
+
+Serial (Code 3): total 0.102770 s, per step 0.010277 s
+  H(0,0) = 0.493896795310   (Table 3: 0.493896795310  OK)
+  H(12345,7) = 0.497876802886   (Table 3: 0.497876802886  OK)
+  H(99999,15) = 0.497973641990   (Table 3: 0.497973641990  OK)
+
+OpenMP schedule(static): total 0.080065 s, per step 0.008006 s
+  H(0,0) = 0.493896795310   (Table 3: 0.493896795310  OK)
+  H(12345,7) = 0.497876802886   (Table 3: 0.497876802886  OK)
+  H(99999,15) = 0.497973641990   (Table 3: 0.497973641990  OK)
+
+OpenMP schedule(dynamic, 64): total 0.081149 s, per step 0.008115 s
+  H(0,0) = 0.493896795310   (Table 3: 0.493896795310  OK)
+  H(12345,7) = 0.497876802886   (Table 3: 0.497876802886  OK)
+  H(99999,15) = 0.497973641990   (Table 3: 0.497973641990  OK)
+
+Speedup over serial: static 1.284, dynamic 1.266
+
+Per-thread work (per step):
+  thread   static: links    busy(s)   dynamic: links    busy(s)
+       0         1020227   0.008002          1020227   0.008110
+
+--- Task 2.2 Version A (Allgatherv): n=100000, p=3, threads=1 ---
+  rank      rows      links   compute(s)    comm(s)    wait(s)   recv/step
+     0     33334     486676     0.040792   0.704515   0.000000    8333.2 KiB
+     1     33333     266802     0.044271   0.699587   0.000000    8333.4 KiB
+     2     33333     266749     0.050644   0.693248   0.000000    8333.4 KiB
+  Total links: 1020227  (Table 3: 1020227  OK)
+  Compute imbalance (max/avg): 1.120
+  Total time:    0.747402 s
+  Time per step: 0.074740 s
+  H(0,0) = 0.493896795310   (Table 3: 0.493896795310  OK)   [printed by rank 0]
+  H(12345,7) = 0.497876802886   (Table 3: 0.497876802886  OK)   [printed by rank 0]
+  H(99999,15) = 0.497973641990   (Table 3: 0.497973641990  OK)   [printed by rank 2]
+
+--- Task 2.3 Version B (halo, interior before Waitall): n=100000, p=3, threads=1 ---
+  rank      rows      links   compute(s)    comm(s)    wait(s)   recv/step
+     0     33334     486676     0.047836   0.019454   0.002993      32.0 KiB
+     1     33333     266802     0.040749   0.021540   0.013474      32.0 KiB
+     2     33333     266749     0.043007   0.013059   0.005574      32.0 KiB
+  Total links: 1020227  (Table 3: 1020227  OK)
+  Compute imbalance (max/avg): 1.091
+  Total time:    0.069983 s
+  Time per step: 0.006998 s
+  H(0,0) = 0.493896795310   (Table 3: 0.493896795310  OK)   [printed by rank 0]
+  H(12345,7) = 0.497876802886   (Table 3: 0.497876802886  OK)   [printed by rank 0]
+  H(99999,15) = 0.497973641990   (Table 3: 0.497973641990  OK)   [printed by rank 2]
+
+--- Task 2.3 Version B (halo, all rows after Waitall): n=100000, p=3, threads=1 ---
+  rank      rows      links   compute(s)    comm(s)    wait(s)   recv/step
+     0     33334     486676     0.050124   0.010654   0.001590      32.0 KiB
+     1     33333     266802     0.038420   0.022573   0.013145      32.0 KiB
+     2     33333     266749     0.032749   0.026590   0.014931      32.0 KiB
+  Total links: 1020227  (Table 3: 1020227  OK)
+  Compute imbalance (max/avg): 1.240
+  Total time:    0.062962 s
+  Time per step: 0.006296 s
+  H(0,0) = 0.493896795310   (Table 3: 0.493896795310  OK)   [printed by rank 0]
+  H(12345,7) = 0.497876802886   (Table 3: 0.497876802886  OK)   [printed by rank 0]
+  H(99999,15) = 0.497973641990   (Table 3: 0.497973641990  OK)   [printed by rank 2]
+
+--- Task 2.4 block boundaries (n=100000, p=3) ---
+  rank   equal rows: first user, rows   equal links: first user, rows
+     0                   0   33334                    0   14998
+     1               33334   33333                14998   42525
+     2               66667   33333                57523   42477
+
+--- Task 2.4 Version B, equal ROWS: n=100000, p=3, threads=1 ---
+  rank      rows      links   compute(s)    comm(s)    wait(s)   recv/step
+     0     33334     486676     0.045941   0.013073   0.004859      32.0 KiB
+     1     33333     266802     0.038796   0.018194   0.012062      32.0 KiB
+     2     33333     266749     0.042411   0.012716   0.003533      32.0 KiB
+  Total links: 1020227  (Table 3: 1020227  OK)
+  Compute imbalance (max/avg): 1.084
+  Total time:    0.060546 s
+  Time per step: 0.006055 s
+  H(0,0) = 0.493896795310   (Table 3: 0.493896795310  OK)   [printed by rank 0]
+  H(12345,7) = 0.497876802886   (Table 3: 0.497876802886  OK)   [printed by rank 0]
+  H(99999,15) = 0.497973641990   (Table 3: 0.497973641990  OK)   [printed by rank 2]
+
+--- Task 2.4 Version B, equal LINKS (balanced): n=100000, p=3, threads=1 ---
+  rank      rows      links   compute(s)    comm(s)    wait(s)   recv/step
+     0     14998     340079     0.026924   0.034931   0.028063      32.0 KiB
+     1     42525     340073     0.045982   0.013641   0.006740      32.0 KiB
+     2     42477     340075     0.051864   0.013628   0.004583      32.0 KiB
+  Total links: 1020227  (Table 3: 1020227  OK)
+  Compute imbalance (max/avg): 1.247
+  Total time:    0.067795 s
+  Time per step: 0.006779 s
+  H(0,0) = 0.493896795310   (Table 3: 0.493896795310  OK)   [printed by rank 0]
+  H(12345,7) = 0.497876802886   (Table 3: 0.497876802886  OK)   [printed by rank 0]
+  H(99999,15) = 0.497973641990   (Table 3: 0.497973641990  OK)   [printed by rank 2]
+[exit=0  wall=3s]
+
+================================================================
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS --oversubscribe --map-by node -n 7 --hostfile hosts ./task2 100000 all
+================================================================
+Processes=7, OpenMP threads per process=1
+  rank 0 on master
+  rank 1 on slave1
+  rank 2 on slave2
+  rank 3 on master
+  rank 4 on slave1
+  rank 5 on slave2
+  rank 6 on master
+
+--- Task 2.1: n=100000, threads=1 ---
+  Total links: 1020227  (Table 3: 1020227  OK)
+
+Serial (Code 3): total 0.106443 s, per step 0.010644 s
+  H(0,0) = 0.493896795310   (Table 3: 0.493896795310  OK)
+  H(12345,7) = 0.497876802886   (Table 3: 0.497876802886  OK)
+  H(99999,15) = 0.497973641990   (Table 3: 0.497973641990  OK)
+
+OpenMP schedule(static): total 0.080689 s, per step 0.008069 s
+  H(0,0) = 0.493896795310   (Table 3: 0.493896795310  OK)
+  H(12345,7) = 0.497876802886   (Table 3: 0.497876802886  OK)
+  H(99999,15) = 0.497973641990   (Table 3: 0.497973641990  OK)
+
+OpenMP schedule(dynamic, 64): total 0.080082 s, per step 0.008008 s
+  H(0,0) = 0.493896795310   (Table 3: 0.493896795310  OK)
+  H(12345,7) = 0.497876802886   (Table 3: 0.497876802886  OK)
+  H(99999,15) = 0.497973641990   (Table 3: 0.497973641990  OK)
+
+Speedup over serial: static 1.319, dynamic 1.329
+
+Per-thread work (per step):
+  thread   static: links    busy(s)   dynamic: links    busy(s)
+       0         1020227   0.008064          1020227   0.008004
+
+--- Task 2.2 Version A (Allgatherv): n=100000, p=7, threads=1 ---
+  rank      rows      links   compute(s)    comm(s)    wait(s)   recv/step
+     0     14286     334512     0.064085   2.081432   0.000000   10714.2 KiB
+     1     14286     114223     0.025719   2.132837   0.000000   10714.2 KiB
+     2     14286     114067     0.018105   2.154798   0.000000   10714.2 KiB
+     3     14286     114356     0.026044   2.139818   0.000000   10714.2 KiB
+     4     14286     114603     0.021010   2.138963   0.000000   10714.2 KiB
+     5     14285     114376     0.033134   2.121081   0.000000   10714.4 KiB
+     6     14285     114090     0.030191   2.122493   0.000000   10714.4 KiB
+  Total links: 1020227  (Table 3: 1020227  OK)
+  Compute imbalance (max/avg): 2.055
+  Total time:    2.180721 s
+  Time per step: 0.218072 s
+  H(0,0) = 0.493896795310   (Table 3: 0.493896795310  OK)   [printed by rank 0]
+  H(12345,7) = 0.497876802886   (Table 3: 0.497876802886  OK)   [printed by rank 0]
+  H(99999,15) = 0.497973641990   (Table 3: 0.497973641990  OK)   [printed by rank 6]
+
+--- Task 2.3 Version B (halo, interior before Waitall): n=100000, p=7, threads=1 ---
+  rank      rows      links   compute(s)    comm(s)    wait(s)   recv/step
+     0     14286     334512     0.046885   0.035346   0.028286      32.0 KiB
+     1     14286     114223     0.027663   0.074629   0.062325      32.0 KiB
+     2     14286     114067     0.031855   0.048934   0.039924      32.0 KiB
+     3     14286     114356     0.045042   0.037951   0.025122      32.0 KiB
+     4     14286     114603     0.030569   0.050069   0.040632      32.0 KiB
+     5     14285     114376     0.032273   0.039303   0.020006      32.0 KiB
+     6     14285     114090     0.036748   0.045984   0.043218      32.0 KiB
+  Total links: 1020227  (Table 3: 1020227  OK)
+  Compute imbalance (max/avg): 1.307
+  Total time:    0.129848 s
+  Time per step: 0.012985 s
+  H(0,0) = 0.493896795310   (Table 3: 0.493896795310  OK)   [printed by rank 0]
+  H(12345,7) = 0.497876802886   (Table 3: 0.497876802886  OK)   [printed by rank 0]
+  H(99999,15) = 0.497973641990   (Table 3: 0.497973641990  OK)   [printed by rank 6]
+
+--- Task 2.3 Version B (halo, all rows after Waitall): n=100000, p=7, threads=1 ---
+  rank      rows      links   compute(s)    comm(s)    wait(s)   recv/step
+     0     14286     334512     0.043977   0.031192   0.013205      32.0 KiB
+     1     14286     114223     0.030408   0.057365   0.041472      32.0 KiB
+     2     14286     114067     0.027227   0.055497   0.035943      32.0 KiB
+     3     14286     114356     0.024933   0.053420   0.033386      32.0 KiB
+     4     14286     114603     0.022184   0.061908   0.038587      32.0 KiB
+     5     14285     114376     0.022466   0.047000   0.016715      32.0 KiB
+     6     14285     114090     0.029827   0.049050   0.031545      32.0 KiB
+  Total links: 1020227  (Table 3: 1020227  OK)
+  Compute imbalance (max/avg): 1.531
+  Total time:    0.104807 s
+  Time per step: 0.010481 s
+  H(0,0) = 0.493896795310   (Table 3: 0.493896795310  OK)   [printed by rank 0]
+  H(12345,7) = 0.497876802886   (Table 3: 0.497876802886  OK)   [printed by rank 0]
+  H(99999,15) = 0.497973641990   (Table 3: 0.497973641990  OK)   [printed by rank 6]
+
+--- Task 2.4 block boundaries (n=100000, p=7) ---
+  rank   equal rows: first user, rows   equal links: first user, rows
+     0                   0   14286                    0    4959
+     1               14286   14286                 4959    4774
+     2               28572   14286                 9733   17391
+     3               42858   14286                27124   18249
+     4               57144   14286                45373   18223
+     5               71430   14285                63596   18133
+     6               85715   14285                81729   18271
+
+--- Task 2.4 Version B, equal ROWS: n=100000, p=7, threads=1 ---
+  rank      rows      links   compute(s)    comm(s)    wait(s)   recv/step
+     0     14286     334512     0.059947   0.016157   0.003715      32.0 KiB
+     1     14286     114223     0.028794   0.063462   0.054226      32.0 KiB
+     2     14286     114067     0.030826   0.044689   0.035770      32.0 KiB
+     3     14286     114356     0.025740   0.050548   0.033787      32.0 KiB
+     4     14286     114603     0.030485   0.037556   0.027560      32.0 KiB
+     5     14285     114376     0.041490   0.027775   0.015827      32.0 KiB
+     6     14285     114090     0.034174   0.043410   0.031122      32.0 KiB
+  Total links: 1020227  (Table 3: 1020227  OK)
+  Compute imbalance (max/avg): 1.669
+  Total time:    0.132106 s
+  Time per step: 0.013211 s
+  H(0,0) = 0.493896795310   (Table 3: 0.493896795310  OK)   [printed by rank 0]
+  H(12345,7) = 0.497876802886   (Table 3: 0.497876802886  OK)   [printed by rank 0]
+  H(99999,15) = 0.497973641990   (Table 3: 0.497973641990  OK)   [printed by rank 6]
+
+--- Task 2.4 Version B, equal LINKS (balanced): n=100000, p=7, threads=1 ---
+  rank      rows      links   compute(s)    comm(s)    wait(s)   recv/step
+     0      4959     145811     0.011488   0.052575   0.048021      32.0 KiB
+     1      4774     145685     0.014274   0.055589   0.044527      32.0 KiB
+     2     17391     145750     0.039761   0.033083   0.026509      32.0 KiB
+     3     18249     145746     0.039720   0.033078   0.021902      32.0 KiB
+     4     18223     145745     0.044693   0.027934   0.012801      32.0 KiB
+     5     18133     145749     0.044947   0.024000   0.009756      32.0 KiB
+     6     18271     145741     0.040446   0.031105   0.025040      32.0 KiB
+  Total links: 1020227  (Table 3: 1020227  OK)
+  Compute imbalance (max/avg): 1.337
+  Total time:    0.082600 s
+  Time per step: 0.008260 s
+  H(0,0) = 0.493896795310   (Table 3: 0.493896795310  OK)   [printed by rank 0]
+  H(12345,7) = 0.497876802886   (Table 3: 0.497876802886  OK)   [printed by rank 2]
+  H(99999,15) = 0.497973641990   (Table 3: 0.497973641990  OK)   [printed by rank 6]
+[exit=0  wall=5s]
+
+================================================================
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS --oversubscribe --map-by node -n 8 --hostfile hosts ./task2 100000 all
+================================================================
+Processes=8, OpenMP threads per process=1
+  rank 0 on master
+  rank 1 on slave1
+  rank 2 on slave2
+  rank 3 on master
+  rank 4 on slave1
+  rank 5 on slave2
+  rank 6 on master
+  rank 7 on slave1
+
+--- Task 2.1: n=100000, threads=1 ---
+  Total links: 1020227  (Table 3: 1020227  OK)
+
+Serial (Code 3): total 0.106608 s, per step 0.010661 s
+  H(0,0) = 0.493896795310   (Table 3: 0.493896795310  OK)
+  H(12345,7) = 0.497876802886   (Table 3: 0.497876802886  OK)
+  H(99999,15) = 0.497973641990   (Table 3: 0.497973641990  OK)
+
+OpenMP schedule(static): total 0.084288 s, per step 0.008429 s
+  H(0,0) = 0.493896795310   (Table 3: 0.493896795310  OK)
+  H(12345,7) = 0.497876802886   (Table 3: 0.497876802886  OK)
+  H(99999,15) = 0.497973641990   (Table 3: 0.497973641990  OK)
+
+OpenMP schedule(dynamic, 64): total 0.082874 s, per step 0.008287 s
+  H(0,0) = 0.493896795310   (Table 3: 0.493896795310  OK)
+  H(12345,7) = 0.497876802886   (Table 3: 0.497876802886  OK)
+  H(99999,15) = 0.497973641990   (Table 3: 0.497973641990  OK)
+
+Speedup over serial: static 1.265, dynamic 1.286
+
+Per-thread work (per step):
+  thread   static: links    busy(s)   dynamic: links    busy(s)
+       0         1020227   0.008422          1020227   0.008282
+
+--- Task 2.2 Version A (Allgatherv): n=100000, p=8, threads=1 ---
+  rank      rows      links   compute(s)    comm(s)    wait(s)   recv/step
+     0     12500     320129     0.029823   3.154123   0.000000   10937.5 KiB
+     1     12500     100109     0.021051   3.303464   0.000000   10937.5 KiB
+     2     12500      99786     0.018948   3.155332   0.000000   10937.5 KiB
+     3     12500     100021     0.017534   3.325997   0.000000   10937.5 KiB
+     4     12500      99826     0.064674   3.166468   0.000000   10937.5 KiB
+     5     12500     100640     0.016946   3.252889   0.000000   10937.5 KiB
+     6     12500      99801     0.029536   3.121968   0.000000   10937.5 KiB
+     7     12500      99915     0.027803   3.307921   0.000000   10937.5 KiB
+  Total links: 1020227  (Table 3: 1020227  OK)
+  Compute imbalance (max/avg): 2.286
+  Total time:    3.407566 s
+  Time per step: 0.340757 s
+  H(0,0) = 0.493896795310   (Table 3: 0.493896795310  OK)   [printed by rank 0]
+  H(12345,7) = 0.497876802886   (Table 3: 0.497876802886  OK)   [printed by rank 0]
+  H(99999,15) = 0.497973641990   (Table 3: 0.497973641990  OK)   [printed by rank 7]
+
+--- Task 2.3 Version B (halo, interior before Waitall): n=100000, p=8, threads=1 ---
+  rank      rows      links   compute(s)    comm(s)    wait(s)   recv/step
+     0     12500     320129     0.041284   0.049159   0.025500      32.0 KiB
+     1     12500     100109     0.037068   0.066156   0.054837      32.0 KiB
+     2     12500      99786     0.022387   0.075235   0.062494      32.0 KiB
+     3     12500     100021     0.027974   0.065177   0.047919      32.0 KiB
+     4     12500      99826     0.033428   0.064943   0.044954      32.0 KiB
+     5     12500     100640     0.019100   0.054610   0.036904      32.0 KiB
+     6     12500      99801     0.036219   0.053745   0.039596      32.0 KiB
+     7     12500      99915     0.032946   0.059282   0.040359      32.0 KiB
+  Total links: 1020227  (Table 3: 1020227  OK)
+  Compute imbalance (max/avg): 1.319
+  Total time:    0.196095 s
+  Time per step: 0.019609 s
+  H(0,0) = 0.493896795310   (Table 3: 0.493896795310  OK)   [printed by rank 0]
+  H(12345,7) = 0.497876802886   (Table 3: 0.497876802886  OK)   [printed by rank 0]
+  H(99999,15) = 0.497973641990   (Table 3: 0.497973641990  OK)   [printed by rank 7]
+
+--- Task 2.3 Version B (halo, all rows after Waitall): n=100000, p=8, threads=1 ---
+  rank      rows      links   compute(s)    comm(s)    wait(s)   recv/step
+     0     12500     320129     0.032528   0.074450   0.051045      32.0 KiB
+     1     12500     100109     0.043891   0.063018   0.015497      32.0 KiB
+     2     12500      99786     0.021680   0.094625   0.066230      32.0 KiB
+     3     12500     100021     0.022551   0.069203   0.046925      32.0 KiB
+     4     12500      99826     0.033744   0.070646   0.028003      32.0 KiB
+     5     12500     100640     0.021960   0.071848   0.045929      32.0 KiB
+     6     12500      99801     0.023835   0.067669   0.038731      32.0 KiB
+     7     12500      99915     0.033328   0.060929   0.029145      32.0 KiB
+  Total links: 1020227  (Table 3: 1020227  OK)
+  Compute imbalance (max/avg): 1.504
+  Total time:    0.184992 s
+  Time per step: 0.018499 s
+  H(0,0) = 0.493896795310   (Table 3: 0.493896795310  OK)   [printed by rank 0]
+  H(12345,7) = 0.497876802886   (Table 3: 0.497876802886  OK)   [printed by rank 0]
+  H(99999,15) = 0.497973641990   (Table 3: 0.497973641990  OK)   [printed by rank 7]
+
+--- Task 2.4 block boundaries (n=100000, p=8) ---
+  rank   equal rows: first user, rows   equal links: first user, rows
+     0                   0   12500                    0    4378
+     1               12500   12500                 4378    4148
+     2               25000   12500                 8526   11776
+     3               37500   12500                20302   15961
+     4               50000   12500                36263   15938
+     5               62500   12500                52201   15916
+     6               75000   12500                68117   15912
+     7               87500   12500                84029   15971
+
+--- Task 2.4 Version B, equal ROWS: n=100000, p=8, threads=1 ---
+  rank      rows      links   compute(s)    comm(s)    wait(s)   recv/step
+     0     12500     320129     0.052277   0.045820   0.026839      32.0 KiB
+     1     12500     100109     0.046919   0.051702   0.007325      32.0 KiB
+     2     12500      99786     0.029318   0.071511   0.057577      32.0 KiB
+     3     12500     100021     0.040473   0.054802   0.044095      32.0 KiB
+     4     12500      99826     0.026110   0.075178   0.055535      32.0 KiB
+     5     12500     100640     0.034539   0.057018   0.028361      32.0 KiB
+     6     12500      99801     0.029101   0.067834   0.053107      32.0 KiB
+     7     12500      99915     0.034093   0.062436   0.034697      32.0 KiB
+  Total links: 1020227  (Table 3: 1020227  OK)
+  Compute imbalance (max/avg): 1.428
+  Total time:    0.168367 s
+  Time per step: 0.016837 s
+  H(0,0) = 0.493896795310   (Table 3: 0.493896795310  OK)   [printed by rank 0]
+  H(12345,7) = 0.497876802886   (Table 3: 0.497876802886  OK)   [printed by rank 0]
+  H(99999,15) = 0.497973641990   (Table 3: 0.497973641990  OK)   [printed by rank 7]
+
+--- Task 2.4 Version B, equal LINKS (balanced): n=100000, p=8, threads=1 ---
+  rank      rows      links   compute(s)    comm(s)    wait(s)   recv/step
+     0      4378     127532     0.023089   0.106747   0.100868      32.0 KiB
+     1      4148     127631     0.012405   0.057473   0.019190      32.0 KiB
+     2     11776     127425     0.024554   0.101285   0.083504      32.0 KiB
+     3     15961     127528     0.034879   0.099355   0.081982      32.0 KiB
+     4     15938     127531     0.039525   0.106187   0.076484      32.0 KiB
+     5     15916     127526     0.016034   0.117725   0.106674      32.0 KiB
+     6     15912     127526     0.036333   0.096844   0.087858      32.0 KiB
+     7     15971     127528     0.050609   0.034346   0.013013      32.0 KiB
+  Total links: 1020227  (Table 3: 1020227  OK)
+  Compute imbalance (max/avg): 1.705
+  Total time:    0.199081 s
+  Time per step: 0.019908 s
+  H(0,0) = 0.493896795310   (Table 3: 0.493896795310  OK)   [printed by rank 0]
+  H(12345,7) = 0.497876802886   (Table 3: 0.497876802886  OK)   [printed by rank 2]
+  H(99999,15) = 0.497973641990   (Table 3: 0.497973641990  OK)   [printed by rank 7]
+[exit=0  wall=8s]
+
+######## REPEAT 1/1 ########
+######## TASK 2.1 — serial vs OpenMP static vs dynamic,64 (one node) ########
+================================================================
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS -n 1 --hostfile hosts ./task2 100000 2.1
+================================================================
+Processes=1, OpenMP threads per process=1
+  rank 0 on master
+
+--- Task 2.1: n=100000, threads=1 ---
+  Total links: 1020227  (Table 3: 1020227  OK)
+
+Serial (Code 3): total 0.103228 s, per step 0.010323 s
+  H(0,0) = 0.493896795310   (Table 3: 0.493896795310  OK)
+  H(12345,7) = 0.497876802886   (Table 3: 0.497876802886  OK)
+  H(99999,15) = 0.497973641990   (Table 3: 0.497973641990  OK)
+
+OpenMP schedule(static): total 0.080027 s, per step 0.008003 s
+  H(0,0) = 0.493896795310   (Table 3: 0.493896795310  OK)
+  H(12345,7) = 0.497876802886   (Table 3: 0.497876802886  OK)
+  H(99999,15) = 0.497973641990   (Table 3: 0.497973641990  OK)
+
+OpenMP schedule(dynamic, 64): total 0.079871 s, per step 0.007987 s
+  H(0,0) = 0.493896795310   (Table 3: 0.493896795310  OK)
+  H(12345,7) = 0.497876802886   (Table 3: 0.497876802886  OK)
+  H(99999,15) = 0.497973641990   (Table 3: 0.497973641990  OK)
+
+Speedup over serial: static 1.290, dynamic 1.292
+
+Per-thread work (per step):
+  thread   static: links    busy(s)   dynamic: links    busy(s)
+       0         1020227   0.007998          1020227   0.007983
+[exit=0  wall=0s]
+
+================================================================
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS -n 1 --hostfile hosts ./task2 1000000 2.1
+================================================================
+Processes=1, OpenMP threads per process=1
+  rank 0 on master
+
+--- Task 2.1: n=1000000, threads=1 ---
+  Total links: 10160271  (Table 3: 10160271  OK)
+
+Serial (Code 3): total 1.061676 s, per step 0.106168 s
+  H(0,0) = 0.500882792529   (Table 3: 0.500882792529  OK)
+  H(12345,7) = 0.499154198420   (Table 3: 0.499154198420  OK)
+  H(999999,15) = 0.492279183027   (Table 3: 0.492279183027  OK)
+
+OpenMP schedule(static): total 0.831853 s, per step 0.083185 s
+  H(0,0) = 0.500882792529   (Table 3: 0.500882792529  OK)
+  H(12345,7) = 0.499154198420   (Table 3: 0.499154198420  OK)
+  H(999999,15) = 0.492279183027   (Table 3: 0.492279183027  OK)
+
+OpenMP schedule(dynamic, 64): total 0.846377 s, per step 0.084638 s
+  H(0,0) = 0.500882792529   (Table 3: 0.500882792529  OK)
+  H(12345,7) = 0.499154198420   (Table 3: 0.499154198420  OK)
+  H(999999,15) = 0.492279183027   (Table 3: 0.492279183027  OK)
+
+Speedup over serial: static 1.276, dynamic 1.254
+
+Per-thread work (per step):
+  thread   static: links    busy(s)   dynamic: links    busy(s)
+       0        10160271   0.083178         10160271   0.084630
+[exit=0  wall=4s]
+
+================================================================
+$ OMP_NUM_THREADS=2 mpirun -x OMP_NUM_THREADS -n 1 --hostfile hosts ./task2 1000000 2.1
+================================================================
+Processes=1, OpenMP threads per process=2
+  rank 0 on master
+
+--- Task 2.1: n=1000000, threads=2 ---
+  Total links: 10160271  (Table 3: 10160271  OK)
+
+Serial (Code 3): total 1.052338 s, per step 0.105234 s
+  H(0,0) = 0.500882792529   (Table 3: 0.500882792529  OK)
+  H(12345,7) = 0.499154198420   (Table 3: 0.499154198420  OK)
+  H(999999,15) = 0.492279183027   (Table 3: 0.492279183027  OK)
+
+OpenMP schedule(static): total 1.300641 s, per step 0.130064 s
+  H(0,0) = 0.500882792529   (Table 3: 0.500882792529  OK)
+  H(12345,7) = 0.499154198420   (Table 3: 0.499154198420  OK)
+  H(999999,15) = 0.492279183027   (Table 3: 0.492279183027  OK)
+
+OpenMP schedule(dynamic, 64): total 0.839921 s, per step 0.083992 s
+  H(0,0) = 0.500882792529   (Table 3: 0.500882792529  OK)
+  H(12345,7) = 0.499154198420   (Table 3: 0.499154198420  OK)
+  H(999999,15) = 0.492279183027   (Table 3: 0.492279183027  OK)
+
+Speedup over serial: static 0.809, dynamic 1.253
+
+Per-thread work (per step):
+  thread   static: links    busy(s)   dynamic: links    busy(s)
+       0         5082272   0.127385          5010001   0.082366
+       1         5077999   0.125476          5150270   0.080402
+  Link imbalance (max/avg): static 1.000, dynamic 1.014
+[exit=0  wall=5s]
+
+================================================================
+$ OMP_NUM_THREADS=4 mpirun -x OMP_NUM_THREADS -n 1 --hostfile hosts ./task2 1000000 2.1
+================================================================
+Processes=1, OpenMP threads per process=4
+  rank 0 on master
+
+--- Task 2.1: n=1000000, threads=4 ---
+  Total links: 10160271  (Table 3: 10160271  OK)
+
+Serial (Code 3): total 1.087420 s, per step 0.108742 s
+  H(0,0) = 0.500882792529   (Table 3: 0.500882792529  OK)
+  H(12345,7) = 0.499154198420   (Table 3: 0.499154198420  OK)
+  H(999999,15) = 0.492279183027   (Table 3: 0.492279183027  OK)
+
+OpenMP schedule(static): total 1.981879 s, per step 0.198188 s
+  H(0,0) = 0.500882792529   (Table 3: 0.500882792529  OK)
+  H(12345,7) = 0.499154198420   (Table 3: 0.499154198420  OK)
+  H(999999,15) = 0.492279183027   (Table 3: 0.492279183027  OK)
+
+OpenMP schedule(dynamic, 64): total 0.850340 s, per step 0.085034 s
+  H(0,0) = 0.500882792529   (Table 3: 0.500882792529  OK)
+  H(12345,7) = 0.499154198420   (Table 3: 0.499154198420  OK)
+  H(999999,15) = 0.492279183027   (Table 3: 0.492279183027  OK)
+
+Speedup over serial: static 0.549, dynamic 1.279
+
+Per-thread work (per step):
+  thread   static: links    busy(s)   dynamic: links    busy(s)
+       0         2539061   0.176934          2414382   0.071540
+       1         2542751   0.176457          2666814   0.071768
+       2         2543211   0.185582          2430737   0.071513
+       3         2535248   0.175309          2648336   0.071530
+  Link imbalance (max/avg): static 1.001, dynamic 1.050
+[exit=0  wall=5s]
+
+######## TASK 2.2 — Version A (Allgatherv) ########
+================================================================
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS -n 1 --hostfile hosts ./task2 1000000 2.2
+================================================================
+Processes=1, OpenMP threads per process=1
+  rank 0 on master
+
+--- Task 2.2 Version A (Allgatherv): n=1000000, p=1, threads=1 ---
+  rank      rows      links   compute(s)    comm(s)    wait(s)   recv/step
+     0   1000000   10160271     0.838149   0.165847   0.000000       0.0 KiB
+  Total links: 10160271  (Table 3: 10160271  OK)
+  Compute imbalance (max/avg): 1.000
+  Total time:    1.004007 s
+  Time per step: 0.100401 s
+  H(0,0) = 0.500882792529   (Table 3: 0.500882792529  OK)   [printed by rank 0]
+  H(12345,7) = 0.499154198420   (Table 3: 0.499154198420  OK)   [printed by rank 0]
+  H(999999,15) = 0.492279183027   (Table 3: 0.492279183027  OK)   [printed by rank 0]
+[exit=0  wall=1s]
+
+================================================================
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS -n 2 --hostfile hosts ./task2 1000000 2.2
+================================================================
+Processes=2, OpenMP threads per process=1
+  rank 0 on master
+  rank 1 on slave1
+
+--- Task 2.2 Version A (Allgatherv): n=1000000, p=2, threads=1 ---
+  rank      rows      links   compute(s)    comm(s)    wait(s)   recv/step
+     0    500000    6162142     0.572994   4.655316   0.000000   62500.0 KiB
+     1    500000    3998129     0.489655   4.732234   0.000000   62500.0 KiB
+  Total links: 10160271  (Table 3: 10160271  OK)
+  Compute imbalance (max/avg): 1.078
+  Total time:    5.229148 s
+  Time per step: 0.522915 s
+  H(0,0) = 0.500882792529   (Table 3: 0.500882792529  OK)   [printed by rank 0]
+  H(12345,7) = 0.499154198420   (Table 3: 0.499154198420  OK)   [printed by rank 0]
+  H(999999,15) = 0.492279183027   (Table 3: 0.492279183027  OK)   [printed by rank 1]
+[exit=0  wall=7s]
+
+================================================================
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS --oversubscribe --map-by node -n 4 --hostfile hosts ./task2 1000000 2.2
+================================================================
+Processes=4, OpenMP threads per process=1
+  rank 0 on master
+  rank 1 on slave1
+  rank 2 on slave2
+  rank 3 on master
+
+--- Task 2.2 Version A (Allgatherv): n=1000000, p=4, threads=1 ---
+  rank      rows      links   compute(s)    comm(s)    wait(s)   recv/step
+     0    250000    4162536     0.483332   8.871429   0.000000   93750.0 KiB
+     1    250000    1999606     0.266085   9.546950   0.000000   93750.0 KiB
+     2    250000    1999156     0.261039   9.544742   0.000000   93750.0 KiB
+     3    250000    1998973     0.418990   8.916889   0.000000   93750.0 KiB
+  Total links: 10160271  (Table 3: 10160271  OK)
+  Compute imbalance (max/avg): 1.353
+  Total time:    9.813681 s
+  Time per step: 0.981368 s
+  H(0,0) = 0.500882792529   (Table 3: 0.500882792529  OK)   [printed by rank 0]
+  H(12345,7) = 0.499154198420   (Table 3: 0.499154198420  OK)   [printed by rank 0]
+  H(999999,15) = 0.492279183027   (Table 3: 0.492279183027  OK)   [printed by rank 3]
+[exit=0  wall=10s]
+
+================================================================
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS --oversubscribe --map-by node -n 8 --hostfile hosts ./task2 1000000 2.2
+================================================================
+Processes=8, OpenMP threads per process=1
+  rank 0 on master
+  rank 1 on slave1
+  rank 2 on slave2
+  rank 3 on master
+  rank 4 on slave1
+  rank 5 on slave2
+  rank 6 on master
+  rank 7 on slave1
+
+--- Task 2.2 Version A (Allgatherv): n=1000000, p=8, threads=1 ---
+  rank      rows      links   compute(s)    comm(s)    wait(s)   recv/step
+     0    125000    3161820     0.190022  28.843072   0.000000   109375.0 KiB
+     1    125000    1000716     0.346016  28.177261   0.000000   109375.0 KiB
+     2    125000    1000604     0.189020  28.562010   0.000000   109375.0 KiB
+     3    125000     999002     0.194301  28.305600   0.000000   109375.0 KiB
+     4    125000     999964     0.489268  28.556353   0.000000   109375.0 KiB
+     5    125000     999192     0.238332  28.260369   0.000000   109375.0 KiB
+     6    125000     999897     0.270586  28.476914   0.000000   109375.0 KiB
+     7    125000     999076     0.475402  28.022783   0.000000   109375.0 KiB
+  Total links: 10160271  (Table 3: 10160271  OK)
+  Compute imbalance (max/avg): 1.636
+  Total time:    29.119602 s
+  Time per step: 2.911960 s
+  H(0,0) = 0.500882792529   (Table 3: 0.500882792529  OK)   [printed by rank 0]
+  H(12345,7) = 0.499154198420   (Table 3: 0.499154198420  OK)   [printed by rank 0]
+  H(999999,15) = 0.492279183027   (Table 3: 0.492279183027  OK)   [printed by rank 7]
+[exit=0  wall=33s]
+
+######## TASK 2.3 — Version B (halo exchange, with / without overlap) ########
+================================================================
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS -n 1 --hostfile hosts ./task2 1000000 2.3
+================================================================
+Processes=1, OpenMP threads per process=1
+  rank 0 on master
+
+--- Task 2.3 Version B (halo, interior before Waitall): n=1000000, p=1, threads=1 ---
+  rank      rows      links   compute(s)    comm(s)    wait(s)   recv/step
+     0   1000000   10160271     0.856233   0.000218   0.000049      32.0 KiB
+  Total links: 10160271  (Table 3: 10160271  OK)
+  Compute imbalance (max/avg): 1.000
+  Total time:    0.856460 s
+  Time per step: 0.085646 s
+  H(0,0) = 0.500882792529   (Table 3: 0.500882792529  OK)   [printed by rank 0]
+  H(12345,7) = 0.499154198420   (Table 3: 0.499154198420  OK)   [printed by rank 0]
+  H(999999,15) = 0.492279183027   (Table 3: 0.492279183027  OK)   [printed by rank 0]
+
+--- Task 2.3 Version B (halo, all rows after Waitall): n=1000000, p=1, threads=1 ---
+  rank      rows      links   compute(s)    comm(s)    wait(s)   recv/step
+     0   1000000   10160271     0.829037   0.000210   0.000019      32.0 KiB
+  Total links: 10160271  (Table 3: 10160271  OK)
+  Compute imbalance (max/avg): 1.000
+  Total time:    0.829255 s
+  Time per step: 0.082925 s
+  H(0,0) = 0.500882792529   (Table 3: 0.500882792529  OK)   [printed by rank 0]
+  H(12345,7) = 0.499154198420   (Table 3: 0.499154198420  OK)   [printed by rank 0]
+  H(999999,15) = 0.492279183027   (Table 3: 0.492279183027  OK)   [printed by rank 0]
+[exit=0  wall=3s]
+
+================================================================
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS -n 2 --hostfile hosts ./task2 1000000 2.3
+================================================================
+Processes=2, OpenMP threads per process=1
+  rank 0 on master
+  rank 1 on slave1
+
+--- Task 2.3 Version B (halo, interior before Waitall): n=1000000, p=2, threads=1 ---
+  rank      rows      links   compute(s)    comm(s)    wait(s)   recv/step
+     0    500000    6162142     0.535132   0.018518   0.002663      32.0 KiB
+     1    500000    3998129     0.487583   0.021347   0.009452      32.0 KiB
+  Total links: 10160271  (Table 3: 10160271  OK)
+  Compute imbalance (max/avg): 1.046
+  Total time:    0.553964 s
+  Time per step: 0.055396 s
+  H(0,0) = 0.500882792529   (Table 3: 0.500882792529  OK)   [printed by rank 0]
+  H(12345,7) = 0.499154198420   (Table 3: 0.499154198420  OK)   [printed by rank 0]
+  H(999999,15) = 0.492279183027   (Table 3: 0.492279183027  OK)   [printed by rank 1]
+
+--- Task 2.3 Version B (halo, all rows after Waitall): n=1000000, p=2, threads=1 ---
+  rank      rows      links   compute(s)    comm(s)    wait(s)   recv/step
+     0    500000    6162142     0.542440   0.014788   0.002139      32.0 KiB
+     1    500000    3998129     0.474917   0.076470   0.061234      32.0 KiB
+  Total links: 10160271  (Table 3: 10160271  OK)
+  Compute imbalance (max/avg): 1.066
+  Total time:    0.558267 s
+  Time per step: 0.055827 s
+  H(0,0) = 0.500882792529   (Table 3: 0.500882792529  OK)   [printed by rank 0]
+  H(12345,7) = 0.499154198420   (Table 3: 0.499154198420  OK)   [printed by rank 0]
+  H(999999,15) = 0.492279183027   (Table 3: 0.492279183027  OK)   [printed by rank 1]
+[exit=0  wall=2s]
+
+================================================================
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS --oversubscribe --map-by node -n 4 --hostfile hosts ./task2 1000000 2.3
+================================================================
+Processes=4, OpenMP threads per process=1
+  rank 0 on master
+  rank 1 on slave1
+  rank 2 on slave2
+  rank 3 on master
+
+--- Task 2.3 Version B (halo, interior before Waitall): n=1000000, p=4, threads=1 ---
+  rank      rows      links   compute(s)    comm(s)    wait(s)   recv/step
+     0    250000    4162536     0.478751   0.116210   0.000679      32.0 KiB
+     1    250000    1999606     0.302911   0.249640   0.242101      32.0 KiB
+     2    250000    1999156     0.280620   0.270968   0.260796      32.0 KiB
+     3    250000    1998973     0.523614   0.069708   0.065346      32.0 KiB
+  Total links: 10160271  (Table 3: 10160271  OK)
+  Compute imbalance (max/avg): 1.321
+  Total time:    0.599730 s
+  Time per step: 0.059973 s
+  H(0,0) = 0.500882792529   (Table 3: 0.500882792529  OK)   [printed by rank 0]
+  H(12345,7) = 0.499154198420   (Table 3: 0.499154198420  OK)   [printed by rank 0]
+  H(999999,15) = 0.492279183027   (Table 3: 0.492279183027  OK)   [printed by rank 3]
+
+--- Task 2.3 Version B (halo, all rows after Waitall): n=1000000, p=4, threads=1 ---
+  rank      rows      links   compute(s)    comm(s)    wait(s)   recv/step
+     0    250000    4162536     0.550765   0.039106   0.011473      32.0 KiB
+     1    250000    1999606     0.319551   0.252233   0.239738      32.0 KiB
+     2    250000    1999156     0.295792   0.263844   0.250141      32.0 KiB
+     3    250000    1998973     0.471115   0.109336   0.054410      32.0 KiB
+  Total links: 10160271  (Table 3: 10160271  OK)
+  Compute imbalance (max/avg): 1.346
+  Total time:    0.594357 s
+  Time per step: 0.059436 s
+  H(0,0) = 0.500882792529   (Table 3: 0.500882792529  OK)   [printed by rank 0]
+  H(12345,7) = 0.499154198420   (Table 3: 0.499154198420  OK)   [printed by rank 0]
+  H(999999,15) = 0.492279183027   (Table 3: 0.492279183027  OK)   [printed by rank 3]
+[exit=0  wall=3s]
+
+================================================================
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS --oversubscribe --map-by node -n 8 --hostfile hosts ./task2 1000000 2.3
+================================================================
+Processes=8, OpenMP threads per process=1
+  rank 0 on master
+  rank 1 on slave1
+  rank 2 on slave2
+  rank 3 on master
+  rank 4 on slave1
+  rank 5 on slave2
+  rank 6 on master
+  rank 7 on slave1
+
+--- Task 2.3 Version B (halo, interior before Waitall): n=1000000, p=8, threads=1 ---
+  rank      rows      links   compute(s)    comm(s)    wait(s)   recv/step
+     0    125000    3161820     0.498170   0.058564   0.024241      32.0 KiB
+     1    125000    1000716     0.352098   0.205426   0.145515      32.0 KiB
+     2    125000    1000604     0.248930   0.275922   0.262842      32.0 KiB
+     3    125000     999002     0.420188   0.093036   0.076294      32.0 KiB
+     4    125000     999964     0.376408   0.112013   0.044519      32.0 KiB
+     5    125000     999192     0.261312   0.226071   0.205657      32.0 KiB
+     6    125000     999897     0.356192   0.176584   0.156558      32.0 KiB
+     7    125000     999076     0.381865   0.192782   0.169635      32.0 KiB
+  Total links: 10160271  (Table 3: 10160271  OK)
+  Compute imbalance (max/avg): 1.377
+  Total time:    0.662587 s
+  Time per step: 0.066259 s
+  H(0,0) = 0.500882792529   (Table 3: 0.500882792529  OK)   [printed by rank 0]
+  H(12345,7) = 0.499154198420   (Table 3: 0.499154198420  OK)   [printed by rank 0]
+  H(999999,15) = 0.492279183027   (Table 3: 0.492279183027  OK)   [printed by rank 7]
+
+--- Task 2.3 Version B (halo, all rows after Waitall): n=1000000, p=8, threads=1 ---
+  rank      rows      links   compute(s)    comm(s)    wait(s)   recv/step
+     0    125000    3161820     0.387614   0.179221   0.096076      32.0 KiB
+     1    125000    1000716     0.344973   0.207557   0.077797      32.0 KiB
+     2    125000    1000604     0.250610   0.306969   0.229729      32.0 KiB
+     3    125000     999002     0.308150   0.220525   0.119733      32.0 KiB
+     4    125000     999964     0.385588   0.185068   0.119980      32.0 KiB
+     5    125000     999192     0.271912   0.248702   0.205937      32.0 KiB
+     6    125000     999897     0.317290   0.242337   0.187805      32.0 KiB
+     7    125000     999076     0.366923   0.214611   0.114799      32.0 KiB
+  Total links: 10160271  (Table 3: 10160271  OK)
+  Compute imbalance (max/avg): 1.178
+  Total time:    0.690276 s
+  Time per step: 0.069028 s
+  H(0,0) = 0.500882792529   (Table 3: 0.500882792529  OK)   [printed by rank 0]
+  H(12345,7) = 0.499154198420   (Table 3: 0.499154198420  OK)   [printed by rank 0]
+  H(999999,15) = 0.492279183027   (Table 3: 0.492279183027  OK)   [printed by rank 7]
+[exit=0  wall=4s]
+
+######## TASK 2.4 — equal rows vs equal links (one process per core) ########
+================================================================
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS --oversubscribe --map-by node -n 4 --hostfile hosts ./task2 1000000 2.4
+================================================================
+Processes=4, OpenMP threads per process=1
+  rank 0 on master
+  rank 1 on slave1
+  rank 2 on slave2
+  rank 3 on master
+
+--- Task 2.4 block boundaries (n=1000000, p=4) ---
+  rank   equal rows: first user, rows   equal links: first user, rows
+     0                   0  250000                    0   85513
+     1              250000  250000                85513  279108
+     2              500000  250000               364621  317706
+     3              750000  250000               682327  317673
+
+--- Task 2.4 Version B, equal ROWS: n=1000000, p=4, threads=1 ---
+  rank      rows      links   compute(s)    comm(s)    wait(s)   recv/step
+     0    250000    4162536     0.521175   0.072862   0.000679      32.0 KiB
+     1    250000    1999606     0.309328   0.213208   0.203804      32.0 KiB
+     2    250000    1999156     0.297907   0.223823   0.213294      32.0 KiB
+     3    250000    1998973     0.516811   0.075907   0.071069      32.0 KiB
+  Total links: 10160271  (Table 3: 10160271  OK)
+  Compute imbalance (max/avg): 1.267
+  Total time:    0.602076 s
+  Time per step: 0.060208 s
+  H(0,0) = 0.500882792529   (Table 3: 0.500882792529  OK)   [printed by rank 0]
+  H(12345,7) = 0.499154198420   (Table 3: 0.499154198420  OK)   [printed by rank 0]
+  H(999999,15) = 0.492279183027   (Table 3: 0.492279183027  OK)   [printed by rank 3]
+
+--- Task 2.4 Version B, equal LINKS (balanced): n=1000000, p=4, threads=1 ---
+  rank      rows      links   compute(s)    comm(s)    wait(s)   recv/step
+     0     85513    2540071     0.288151   0.209824   0.196933      32.0 KiB
+     1    279108    2540071     0.353689   0.104709   0.094071      32.0 KiB
+     2    317706    2540063     0.381655   0.116134   0.110808      32.0 KiB
+     3    317673    2540066     0.504235   0.015114   0.000493      32.0 KiB
+  Total links: 10160271  (Table 3: 10160271  OK)
+  Compute imbalance (max/avg): 1.320
+  Total time:    0.524633 s
+  Time per step: 0.052463 s
+  H(0,0) = 0.500882792529   (Table 3: 0.500882792529  OK)   [printed by rank 0]
+  H(12345,7) = 0.499154198420   (Table 3: 0.499154198420  OK)   [printed by rank 0]
+  H(999999,15) = 0.492279183027   (Table 3: 0.492279183027  OK)   [printed by rank 3]
+[exit=0  wall=2s]
+
+================================================================
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS --oversubscribe --map-by node -n 8 --hostfile hosts ./task2 1000000 2.4
+================================================================
+Processes=8, OpenMP threads per process=1
+  rank 0 on master
+  rank 1 on slave1
+  rank 2 on slave2
+  rank 3 on master
+  rank 4 on slave1
+  rank 5 on slave2
+  rank 6 on master
+  rank 7 on slave1
+
+--- Task 2.4 block boundaries (n=1000000, p=8) ---
+  rank   equal rows: first user, rows   equal links: first user, rows
+     0                   0  125000                    0   42595
+     1              125000  125000                42595   42918
+     2              250000  125000                85513  120501
+     3              375000  125000               206014  158607
+     4              500000  125000               364621  158932
+     5              625000  125000               523553  158774
+     6              750000  125000               682327  158760
+     7              875000  125000               841087  158913
+
+--- Task 2.4 Version B, equal ROWS: n=1000000, p=8, threads=1 ---
+  rank      rows      links   compute(s)    comm(s)    wait(s)   recv/step
+     0    125000    3161820     0.473944   0.062248   0.017063      32.0 KiB
+     1    125000    1000716     0.282984   0.226762   0.170723      32.0 KiB
+     2    125000    1000604     0.227069   0.291584   0.265399      32.0 KiB
+     3    125000     999002     0.360851   0.134781   0.082679      32.0 KiB
+     4    125000     999964     0.287528   0.175502   0.096729      32.0 KiB
+     5    125000     999192     0.268308   0.213630   0.194919      32.0 KiB
+     6    125000     999897     0.322329   0.189935   0.158683      32.0 KiB
+     7    125000     999076     0.346663   0.169610   0.150671      32.0 KiB
+  Total links: 10160271  (Table 3: 10160271  OK)
+  Compute imbalance (max/avg): 1.475
+  Total time:    0.614743 s
+  Time per step: 0.061474 s
+  H(0,0) = 0.500882792529   (Table 3: 0.500882792529  OK)   [printed by rank 0]
+  H(12345,7) = 0.499154198420   (Table 3: 0.499154198420  OK)   [printed by rank 0]
+  H(999999,15) = 0.492279183027   (Table 3: 0.492279183027  OK)   [printed by rank 7]
+
+--- Task 2.4 Version B, equal LINKS (balanced): n=1000000, p=8, threads=1 ---
+  rank      rows      links   compute(s)    comm(s)    wait(s)   recv/step
+     0     42595    1270087     0.140147   0.371572   0.329535      32.0 KiB
+     1     42918    1269984     0.167410   0.310767   0.247969      32.0 KiB
+     2    120501    1270034     0.246613   0.240495   0.215684      32.0 KiB
+     3    158607    1270037     0.370906   0.175517   0.159950      32.0 KiB
+     4    158932    1270028     0.484634   0.098307   0.006196      32.0 KiB
+     5    158774    1270035     0.286411   0.273603   0.233899      32.0 KiB
+     6    158760    1270042     0.368559   0.137359   0.096100      32.0 KiB
+     7    158913    1270024     0.410680   0.142275   0.003669      32.0 KiB
+  Total links: 10160271  (Table 3: 10160271  OK)
+  Compute imbalance (max/avg): 1.566
+  Total time:    0.650887 s
+  Time per step: 0.065089 s
+  H(0,0) = 0.500882792529   (Table 3: 0.500882792529  OK)   [printed by rank 0]
+  H(12345,7) = 0.499154198420   (Table 3: 0.499154198420  OK)   [printed by rank 0]
+  H(999999,15) = 0.492279183027   (Table 3: 0.492279183027  OK)   [printed by rank 7]
+[exit=0  wall=4s]
+
+######## TASK 2.4 — balanced Version B, one process per node + OpenMP ########
+================================================================
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS -n 3 --hostfile hosts ./task2 1000000 2.4
+================================================================
+Processes=3, OpenMP threads per process=1
+  rank 0 on master
+  rank 1 on slave1
+  rank 2 on slave2
+
+--- Task 2.4 block boundaries (n=1000000, p=3) ---
+  rank   equal rows: first user, rows   equal links: first user, rows
+     0                   0  333334                    0  153055
+     1              333334  333333               153055  423406
+     2              666667  333333               576461  423539
+
+--- Task 2.4 Version B, equal ROWS: n=1000000, p=3, threads=1 ---
+  rank      rows      links   compute(s)    comm(s)    wait(s)   recv/step
+     0    333334    4830004     0.459445   0.017976   0.004817      32.0 KiB
+     1    333333    2665118     0.437301   0.012328   0.001328      32.0 KiB
+     2    333333    2665149     0.402922   0.042641   0.028929      32.0 KiB
+  Total links: 10160271  (Table 3: 10160271  OK)
+  Compute imbalance (max/avg): 1.061
+  Total time:    0.482133 s
+  Time per step: 0.048213 s
+  H(0,0) = 0.500882792529   (Table 3: 0.500882792529  OK)   [printed by rank 0]
+  H(12345,7) = 0.499154198420   (Table 3: 0.499154198420  OK)   [printed by rank 0]
+  H(999999,15) = 0.492279183027   (Table 3: 0.492279183027  OK)   [printed by rank 2]
+
+--- Task 2.4 Version B, equal LINKS (balanced): n=1000000, p=3, threads=1 ---
+  rank      rows      links   compute(s)    comm(s)    wait(s)   recv/step
+     0    153055    3386762     0.244595   0.205938   0.197670      32.0 KiB
+     1    423406    3386758     0.477569   0.012861   0.003351      32.0 KiB
+     2    423539    3386751     0.468460   0.018357   0.003981      32.0 KiB
+  Total links: 10160271  (Table 3: 10160271  OK)
+  Compute imbalance (max/avg): 1.203
+  Total time:    0.495154 s
+  Time per step: 0.049515 s
+  H(0,0) = 0.500882792529   (Table 3: 0.500882792529  OK)   [printed by rank 0]
+  H(12345,7) = 0.499154198420   (Table 3: 0.499154198420  OK)   [printed by rank 0]
+  H(999999,15) = 0.492279183027   (Table 3: 0.492279183027  OK)   [printed by rank 2]
+[exit=0  wall=2s]
+
+================================================================
+$ OMP_NUM_THREADS=4 mpirun -x OMP_NUM_THREADS -n 3 --hostfile hosts ./task2 1000000 2.4
+================================================================
+Processes=3, OpenMP threads per process=4
+  rank 0 on master
+  rank 1 on slave1
+  rank 2 on slave2
+
+--- Task 2.4 block boundaries (n=1000000, p=3) ---
+  rank   equal rows: first user, rows   equal links: first user, rows
+     0                   0  333334                    0  153055
+     1              333334  333333               153055  423406
+     2              666667  333333               576461  423539
+
+--- Task 2.4 Version B, equal ROWS: n=1000000, p=3, threads=4 ---
+  rank      rows      links   compute(s)    comm(s)    wait(s)   recv/step
+     0    333334    4830004     0.465624   0.014423   0.002599      32.0 KiB
+     1    333333    2665118     0.416160   0.034953   0.023856      32.0 KiB
+     2    333333    2665149     0.396190   0.050856   0.038786      32.0 KiB
+  Total links: 10160271  (Table 3: 10160271  OK)
+  Compute imbalance (max/avg): 1.093
+  Total time:    0.491566 s
+  Time per step: 0.049157 s
+  H(0,0) = 0.500882792529   (Table 3: 0.500882792529  OK)   [printed by rank 0]
+  H(12345,7) = 0.499154198420   (Table 3: 0.499154198420  OK)   [printed by rank 0]
+  H(999999,15) = 0.492279183027   (Table 3: 0.492279183027  OK)   [printed by rank 2]
+
+--- Task 2.4 Version B, equal LINKS (balanced): n=1000000, p=3, threads=4 ---
+  rank      rows      links   compute(s)    comm(s)    wait(s)   recv/step
+     0    153055    3386762     0.244450   0.213527   0.206418      32.0 KiB
+     1    423406    3386758     0.477891   0.017917   0.004146      32.0 KiB
+     2    423539    3386751     0.459111   0.019843   0.005278      32.0 KiB
+  Total links: 10160271  (Table 3: 10160271  OK)
+  Compute imbalance (max/avg): 1.213
+  Total time:    0.498729 s
+  Time per step: 0.049873 s
+  H(0,0) = 0.500882792529   (Table 3: 0.500882792529  OK)   [printed by rank 0]
+  H(12345,7) = 0.499154198420   (Table 3: 0.499154198420  OK)   [printed by rank 0]
+  H(999999,15) = 0.492279183027   (Table 3: 0.492279183027  OK)   [printed by rank 2]
+[exit=0  wall=2s]
+
+ALL DONE Mon Nov  9 02:36:15 PM UTC 2026

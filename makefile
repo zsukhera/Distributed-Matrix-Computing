@@ -125,10 +125,10 @@ test3: task3
 	OMP_NUM_THREADS=1 mpirun --oversubscribe -n 8 ./task3 1024 3.3
 
 # -----------------------------------------------------------------------
-# Binaries copied to every slave (add task3 once task3.cpp exists).
+# Binaries copied to every slave.
 # Each is copied to a temp name then renamed, so a running copy is never
 # overwritten half-way.
-DEPLOY_BINS := task1 task2
+DEPLOY_BINS := task1 task2 task3
 
 deploy: $(DEPLOY_BINS)
 	@for s in $(SLAVES); do \

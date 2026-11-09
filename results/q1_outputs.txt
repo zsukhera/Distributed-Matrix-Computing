@@ -1,5 +1,6 @@
-Q1 run log — Sun Nov  8 10:18:44 AM UTC 2026  host=master  commit=8ac1d96 + uncommitted changes
-Cluster: master, slave1, slave2 (1 core each, slots=1). p > 3 uses --oversubscribe --map-by node.
+Q1 run log — Mon Nov  9 02:13:56 PM UTC 2026  host=master  commit=965b48d + uncommitted changes
+Cluster: master, slave1, slave2 (slots=1 each). p > 3 uses --oversubscribe --map-by node.
+REPEATS=1 (timing runs; report the best)  HYBRID_THREADS=1
 
 ######## BUILD + DEPLOY ########
 ================================================================
@@ -12,13 +13,21 @@ mpicxx -O2 -fopenmp -std=c++17 -Wall -Wextra -o task1 task1.cpp -fopenmp
 $ make deploy
 ================================================================
 mpicxx -O2 -fopenmp -std=c++17 -Wall -Wextra -o task1 task1.cpp -fopenmp
+mpicxx -O2 -fopenmp -std=c++17 -Wall -Wextra -o task2 task2.cpp -fopenmp
+mpicxx -O2 -fopenmp -std=c++17 -Wall -Wextra -o task3 task3.cpp -fopenmp
 Deploying to slave1...
+  task1
+  task2
+  task3
 Deploying to slave2...
-[exit=0  wall=3s]
+  task1
+  task2
+  task3
+[exit=0  wall=7s]
 
-######## CORRECTNESS — N=8 full matrix (all versions) ########
+######## CORRECTNESS — N=8 full matrix (Table 1a), p=1,2,3,8 ########
 ================================================================
-$ OMP_NUM_THREADS=1 mpirun -n 1 --hostfile hosts ./task1 8 1.1
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS -n 1 --hostfile hosts ./task1 8 1.1
 ================================================================
 Processes=1
   rank 0 on master
@@ -26,7 +35,7 @@ Processes=1
 ========== Task 1.1  (OpenMP, 1 thread) ==========
 
 --- N=8 ---
-i-j-k (serial):        4.41e-07 s
+i-j-k (serial):        5.51e-07 s
 Full matrix C (N=8):
     0    6   -8   -2  -11    0    6   -8
    17  -11    1   -2  -10   17  -11    1
@@ -36,7 +45,7 @@ Full matrix C (N=8):
     1   -9   16   -9    1    1   -9   16
   -10   16   -3   -2    9  -10   16   -3
     0    6   -8   -2  -11    0    6   -8
-i-k-j (serial):        3.01e-07 s
+i-k-j (serial):        4.61e-07 s
 Full matrix C (N=8):
     0    6   -8   -2  -11    0    6   -8
    17  -11    1   -2  -10   17  -11    1
@@ -46,48 +55,7 @@ Full matrix C (N=8):
     1   -9   16   -9    1    1   -9   16
   -10   16   -3   -2    9  -10   16   -3
     0    6   -8   -2  -11    0    6   -8
-i-k-j (OpenMP x1): 1.292e-06 s
-Full matrix C (N=8):
-    0    6   -8   -2  -11    0    6   -8
-   17  -11    1   -2  -10   17  -11    1
-   -8    0    3   -9   19   -8    0    3
-   -5    4   -2   12    6   -5    4   -2
-    5   -6   -7   12  -14    5   -6   -7
-    1   -9   16   -9    1    1   -9   16
-  -10   16   -3   -2    9  -10   16   -3
-    0    6   -8   -2  -11    0    6   -8
-[exit=0  wall=1s]
-
-================================================================
-$ OMP_NUM_THREADS=4 mpirun -n 1 --hostfile hosts ./task1 8 1.1
-================================================================
-Processes=1
-  rank 0 on master
-
-========== Task 1.1  (OpenMP, 4 threads) ==========
-
---- N=8 ---
-i-j-k (serial):        3.61e-07 s
-Full matrix C (N=8):
-    0    6   -8   -2  -11    0    6   -8
-   17  -11    1   -2  -10   17  -11    1
-   -8    0    3   -9   19   -8    0    3
-   -5    4   -2   12    6   -5    4   -2
-    5   -6   -7   12  -14    5   -6   -7
-    1   -9   16   -9    1    1   -9   16
-  -10   16   -3   -2    9  -10   16   -3
-    0    6   -8   -2  -11    0    6   -8
-i-k-j (serial):        4.01e-07 s
-Full matrix C (N=8):
-    0    6   -8   -2  -11    0    6   -8
-   17  -11    1   -2  -10   17  -11    1
-   -8    0    3   -9   19   -8    0    3
-   -5    4   -2   12    6   -5    4   -2
-    5   -6   -7   12  -14    5   -6   -7
-    1   -9   16   -9    1    1   -9   16
-  -10   16   -3   -2    9  -10   16   -3
-    0    6   -8   -2  -11    0    6   -8
-i-k-j (OpenMP x4): 7.4259e-05 s
+i-k-j (OpenMP x1): 1.783e-06 s
 Full matrix C (N=8):
     0    6   -8   -2  -11    0    6   -8
    17  -11    1   -2  -10   17  -11    1
@@ -100,20 +68,23 @@ Full matrix C (N=8):
 [exit=0  wall=0s]
 
 ================================================================
-$ OMP_NUM_THREADS=1 mpirun -n 1 --hostfile hosts ./task1 8 1.2
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS -n 1 --hostfile hosts ./task1 8 1.2
 ================================================================
 Processes=1
   rank 0 on master
 
-========== Task 1.2  (Version A: Scatterv/Bcast/Gatherv, p=1) ==========
+========== Task 1.2  (Version A: Scatterv/Bcast/Gatherv) (p=1) ==========
 
 --- N=8, p=1 ---
-Scatterv(A): 4.6977e-05 s
-Bcast(B):    1.6e-07 s
-Multiply:    1.592e-05 s
-Gatherv(C):  4.81e-07 s
-Total:       6.4811e-05 s
+Scatterv(A): 4.0105e-05 s
+Bcast(B):    8e-08 s
+Multiply:    1.0059e-05 s
+Gatherv(C):  1.9386e-05 s
+Total:       8.594e-05 s
 Memory for B per process: 0.000488281 MiB (x1 copies)
+Per-process times:
+  rank   compute(s)      comm(s)
+     0     0.000010     0.000060
 Full matrix C (N=8):
     0    6   -8   -2  -11    0    6   -8
    17  -11    1   -2  -10   17  -11    1
@@ -126,22 +97,58 @@ Full matrix C (N=8):
 [exit=0  wall=1s]
 
 ================================================================
-$ OMP_NUM_THREADS=1 mpirun -n 3 --hostfile hosts ./task1 8 1.2
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS -n 2 --hostfile hosts ./task1 8 1.2
+================================================================
+Processes=2
+  rank 0 on master
+  rank 1 on slave1
+
+========== Task 1.2  (Version A: Scatterv/Bcast/Gatherv) (p=2) ==========
+
+--- N=8, p=2 ---
+Scatterv(A): 0.000179815 s
+Bcast(B):    0.000276376 s
+Multiply:    0.000108682 s
+Gatherv(C):  0.000956354 s
+Total:       0.00283248 s
+Memory for B per process: 0.000488281 MiB (x2 copies)
+Per-process times:
+  rank   compute(s)      comm(s)
+     0     0.000007     0.001377
+     1     0.000109     0.000518
+Full matrix C (N=8):
+    0    6   -8   -2  -11    0    6   -8
+   17  -11    1   -2  -10   17  -11    1
+   -8    0    3   -9   19   -8    0    3
+   -5    4   -2   12    6   -5    4   -2
+    5   -6   -7   12  -14    5   -6   -7
+    1   -9   16   -9    1    1   -9   16
+  -10   16   -3   -2    9  -10   16   -3
+    0    6   -8   -2  -11    0    6   -8
+[exit=0  wall=0s]
+
+================================================================
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS -n 3 --hostfile hosts ./task1 8 1.2
 ================================================================
 Processes=3
   rank 0 on master
   rank 1 on slave1
   rank 2 on slave2
 
-========== Task 1.2  (Version A: Scatterv/Bcast/Gatherv, p=3) ==========
+========== Task 1.2  (Version A: Scatterv/Bcast/Gatherv) (p=3) ==========
 
 --- N=8, p=3 ---
-Scatterv(A): 0.000667016 s
-Bcast(B):    0.0008622 s
-Multiply:    6.5974e-05 s
-Gatherv(C):  0.000184915 s
-Total:       0.00396452 s
+Scatterv(A): 0.00109393 s
+Bcast(B):    0.000928563 s
+Multiply:    0.000102511 s
+Gatherv(C):  0.0001773 s
+Total:       0.00395686 s
 Memory for B per process: 0.000488281 MiB (x3 copies)
+Per-process times:
+  rank   compute(s)      comm(s)
+     0     0.000013     0.001244
+     1     0.000010     0.001478
+     2     0.000103     0.001724
 Full matrix C (N=8):
     0    6   -8   -2  -11    0    6   -8
    17  -11    1   -2  -10   17  -11    1
@@ -151,10 +158,10 @@ Full matrix C (N=8):
     1   -9   16   -9    1    1   -9   16
   -10   16   -3   -2    9  -10   16   -3
     0    6   -8   -2  -11    0    6   -8
-[exit=0  wall=0s]
+[exit=0  wall=1s]
 
 ================================================================
-$ OMP_NUM_THREADS=1 mpirun --oversubscribe --map-by node -n 8 --hostfile hosts ./task1 8 1.2
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS --oversubscribe --map-by node -n 8 --hostfile hosts ./task1 8 1.2
 ================================================================
 Processes=8
   rank 0 on master
@@ -166,15 +173,25 @@ Processes=8
   rank 6 on master
   rank 7 on slave1
 
-========== Task 1.2  (Version A: Scatterv/Bcast/Gatherv, p=8) ==========
+========== Task 1.2  (Version A: Scatterv/Bcast/Gatherv) (p=8) ==========
 
 --- N=8, p=8 ---
-Scatterv(A): 0.013092 s
-Bcast(B):    0.0708958 s
-Multiply:    0.000180577 s
-Gatherv(C):  0.000281486 s
-Total:       0.809643 s
+Scatterv(A): 0.00977937 s
+Bcast(B):    0.10386 s
+Multiply:    3.1469e-05 s
+Gatherv(C):  0.00540667 s
+Total:       0.75703 s
 Memory for B per process: 0.000488281 MiB (x8 copies)
+Per-process times:
+  rank   compute(s)      comm(s)
+     0     0.000008     0.028102
+     1     0.000015     0.018742
+     2     0.000019     0.022237
+     3     0.000016     0.025390
+     4     0.000012     0.067996
+     5     0.000024     0.107424
+     6     0.000031     0.087462
+     7     0.000011     0.067752
 Full matrix C (N=8):
     0    6   -8   -2  -11    0    6   -8
    17  -11    1   -2  -10   17  -11    1
@@ -187,46 +204,21 @@ Full matrix C (N=8):
 [exit=0  wall=2s]
 
 ================================================================
-$ OMP_NUM_THREADS=1 mpirun -n 1 --hostfile hosts ./task1 8 1.3
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS -n 1 --hostfile hosts ./task1 8 1.3
 ================================================================
 Processes=1
   rank 0 on master
 
-========== Task 1.3  (Version B: Blocking Ring, p=1) ==========
+========== Task 1.3  (Version B: Blocking Ring) (p=1) ==========
 
 --- N=8, p=1 ---
 Ring-comm:   0 s
-Multiply:    2.71e-07 s
-Gatherv(C):  2.9e-07 s
-Total:       1.362e-06 s
+Multiply:    2.6e-07 s
+Total:       1.122e-06 s
 Memory/proc (2 B-blocks): 0.000976562 MiB (vs 0.000488281 MiB for Version A's full B)
-Full matrix C (N=8):
-    0    6   -8   -2  -11    0    6   -8
-   17  -11    1   -2  -10   17  -11    1
-   -8    0    3   -9   19   -8    0    3
-   -5    4   -2   12    6   -5    4   -2
-    5   -6   -7   12  -14    5   -6   -7
-    1   -9   16   -9    1    1   -9   16
-  -10   16   -3   -2    9  -10   16   -3
-    0    6   -8   -2  -11    0    6   -8
-[exit=0  wall=0s]
-
-================================================================
-$ OMP_NUM_THREADS=1 mpirun -n 3 --hostfile hosts ./task1 8 1.3
-================================================================
-Processes=3
-  rank 0 on master
-  rank 1 on slave1
-  rank 2 on slave2
-
-========== Task 1.3  (Version B: Blocking Ring, p=3) ==========
-
---- N=8, p=3 ---
-Ring-comm:   0.00309956 s
-Multiply:    4.9e-07 s
-Gatherv(C):  0.000146514 s
-Total:       0.00311252 s
-Memory/proc (2 B-blocks): 0.000366211 MiB (vs 0.000488281 MiB for Version A's full B)
+Per-process times:
+  rank   compute(s)      comm(s)
+     0     0.000000     0.000000
 Full matrix C (N=8):
     0    6   -8   -2  -11    0    6   -8
    17  -11    1   -2  -10   17  -11    1
@@ -239,7 +231,67 @@ Full matrix C (N=8):
 [exit=0  wall=1s]
 
 ================================================================
-$ OMP_NUM_THREADS=1 mpirun --oversubscribe --map-by node -n 8 --hostfile hosts ./task1 8 1.3
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS -n 2 --hostfile hosts ./task1 8 1.3
+================================================================
+Processes=2
+  rank 0 on master
+  rank 1 on slave1
+
+========== Task 1.3  (Version B: Blocking Ring) (p=2) ==========
+
+--- N=8, p=2 ---
+Ring-comm:   0.00762559 s
+Multiply:    5.32e-07 s
+Total:       0.0092562 s
+Memory/proc (2 B-blocks): 0.000488281 MiB (vs 0.000488281 MiB for Version A's full B)
+Per-process times:
+  rank   compute(s)      comm(s)
+     0     0.000001     0.007626
+     1     0.000000     0.002453
+Full matrix C (N=8):
+    0    6   -8   -2  -11    0    6   -8
+   17  -11    1   -2  -10   17  -11    1
+   -8    0    3   -9   19   -8    0    3
+   -5    4   -2   12    6   -5    4   -2
+    5   -6   -7   12  -14    5   -6   -7
+    1   -9   16   -9    1    1   -9   16
+  -10   16   -3   -2    9  -10   16   -3
+    0    6   -8   -2  -11    0    6   -8
+[exit=0  wall=0s]
+
+================================================================
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS -n 3 --hostfile hosts ./task1 8 1.3
+================================================================
+Processes=3
+  rank 0 on master
+  rank 1 on slave1
+  rank 2 on slave2
+
+========== Task 1.3  (Version B: Blocking Ring) (p=3) ==========
+
+--- N=8, p=3 ---
+Ring-comm:   0.00181612 s
+Multiply:    4.7e-07 s
+Total:       0.00316476 s
+Memory/proc (2 B-blocks): 0.000366211 MiB (vs 0.000488281 MiB for Version A's full B)
+Per-process times:
+  rank   compute(s)      comm(s)
+     0     0.000000     0.001526
+     1     0.000000     0.000858
+     2     0.000000     0.001816
+Full matrix C (N=8):
+    0    6   -8   -2  -11    0    6   -8
+   17  -11    1   -2  -10   17  -11    1
+   -8    0    3   -9   19   -8    0    3
+   -5    4   -2   12    6   -5    4   -2
+    5   -6   -7   12  -14    5   -6   -7
+    1   -9   16   -9    1    1   -9   16
+  -10   16   -3   -2    9  -10   16   -3
+    0    6   -8   -2  -11    0    6   -8
+[exit=0  wall=1s]
+
+================================================================
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS --oversubscribe --map-by node -n 8 --hostfile hosts ./task1 8 1.3
 ================================================================
 Processes=8
   rank 0 on master
@@ -251,14 +303,23 @@ Processes=8
   rank 6 on master
   rank 7 on slave1
 
-========== Task 1.3  (Version B: Blocking Ring, p=8) ==========
+========== Task 1.3  (Version B: Blocking Ring) (p=8) ==========
 
 --- N=8, p=8 ---
-Ring-comm:   0.112239 s
-Multiply:    1.343e-06 s
-Gatherv(C):  0.0142789 s
-Total:       0.730962 s
+Ring-comm:   0.0775798 s
+Multiply:    1.052e-06 s
+Total:       0.740864 s
 Memory/proc (2 B-blocks): 0.00012207 MiB (vs 0.000488281 MiB for Version A's full B)
+Per-process times:
+  rank   compute(s)      comm(s)
+     0     0.000001     0.072606
+     1     0.000001     0.052071
+     2     0.000001     0.070903
+     3     0.000001     0.062764
+     4     0.000001     0.077580
+     5     0.000001     0.068052
+     6     0.000001     0.074816
+     7     0.000001     0.066302
 Full matrix C (N=8):
     0    6   -8   -2  -11    0    6   -8
    17  -11    1   -2  -10   17  -11    1
@@ -271,54 +332,24 @@ Full matrix C (N=8):
 [exit=0  wall=2s]
 
 ================================================================
-$ OMP_NUM_THREADS=1 mpirun -n 1 --hostfile hosts ./task1 8 1.4
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS -n 1 --hostfile hosts ./task1 8 1.4
 ================================================================
 Processes=1
   rank 0 on master
 
-========== Task 1.4  (Version C: Non-blocking Ring + OpenMP, p=1) ==========
+========== Task 1.4  (Version C: Non-blocking Ring + OpenMP) (p=1) ==========
 
 --- N=8, p=1, threads=1 ---
-Multiply:    7.003e-06 s
+Multiply:    5.61e-06 s
 Wait(comm):  0 s
-Gatherv(C):  3.21e-07 s
-Total:       9.097e-06 s
+Total:       6.853e-06 s
 Memory/proc (2 B-blocks): 0.000976562 MiB
 Per-step times (max over ranks):
   step   multiply(s)    wait(s)
-     0     0.000007     0.000000
-Full matrix C (N=8):
-    0    6   -8   -2  -11    0    6   -8
-   17  -11    1   -2  -10   17  -11    1
-   -8    0    3   -9   19   -8    0    3
-   -5    4   -2   12    6   -5    4   -2
-    5   -6   -7   12  -14    5   -6   -7
-    1   -9   16   -9    1    1   -9   16
-  -10   16   -3   -2    9  -10   16   -3
-    0    6   -8   -2  -11    0    6   -8
-[exit=0  wall=0s]
-
-================================================================
-$ OMP_NUM_THREADS=1 mpirun -n 3 --hostfile hosts ./task1 8 1.4
-================================================================
-Processes=3
-  rank 0 on master
-  rank 1 on slave1
-  rank 2 on slave2
-
-========== Task 1.4  (Version C: Non-blocking Ring + OpenMP, p=3) ==========
-
---- N=8, p=3, threads=1 ---
-Multiply:    1.7643e-05 s
-Wait(comm):  0.00150233 s
-Gatherv(C):  0.000425955 s
-Total:       0.00403005 s
-Memory/proc (2 B-blocks): 0.000366211 MiB
-Per-step times (max over ranks):
-  step   multiply(s)    wait(s)
-     0     0.000015     0.000635
-     1     0.000002     0.000867
-     2     0.000002     0.000000
+     0     0.000006     0.000000
+Per-process times:
+  rank   compute(s)      comm(s)
+     0     0.000006     0.000000
 Full matrix C (N=8):
     0    6   -8   -2  -11    0    6   -8
    17  -11    1   -2  -10   17  -11    1
@@ -331,7 +362,76 @@ Full matrix C (N=8):
 [exit=0  wall=1s]
 
 ================================================================
-$ OMP_NUM_THREADS=1 mpirun --oversubscribe --map-by node -n 8 --hostfile hosts ./task1 8 1.4
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS -n 2 --hostfile hosts ./task1 8 1.4
+================================================================
+Processes=2
+  rank 0 on master
+  rank 1 on slave1
+
+========== Task 1.4  (Version C: Non-blocking Ring + OpenMP) (p=2) ==========
+
+--- N=8, p=2, threads=1 ---
+Multiply:    1.8384e-05 s
+Wait(comm):  0.000243024 s
+Total:       0.00211209 s
+Memory/proc (2 B-blocks): 0.000488281 MiB
+Per-step times (max over ranks):
+  step   multiply(s)    wait(s)
+     0     0.000017     0.000243
+     1     0.000002     0.000000
+Per-process times:
+  rank   compute(s)      comm(s)
+     0     0.000009     0.000243
+     1     0.000018     0.000042
+Full matrix C (N=8):
+    0    6   -8   -2  -11    0    6   -8
+   17  -11    1   -2  -10   17  -11    1
+   -8    0    3   -9   19   -8    0    3
+   -5    4   -2   12    6   -5    4   -2
+    5   -6   -7   12  -14    5   -6   -7
+    1   -9   16   -9    1    1   -9   16
+  -10   16   -3   -2    9  -10   16   -3
+    0    6   -8   -2  -11    0    6   -8
+[exit=0  wall=0s]
+
+================================================================
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS -n 3 --hostfile hosts ./task1 8 1.4
+================================================================
+Processes=3
+  rank 0 on master
+  rank 1 on slave1
+  rank 2 on slave2
+
+========== Task 1.4  (Version C: Non-blocking Ring + OpenMP) (p=3) ==========
+
+--- N=8, p=3, threads=1 ---
+Multiply:    1.7191e-05 s
+Wait(comm):  0.000799983 s
+Total:       0.00495493 s
+Memory/proc (2 B-blocks): 0.000366211 MiB
+Per-step times (max over ranks):
+  step   multiply(s)    wait(s)
+     0     0.000014     0.000792
+     1     0.000003     0.000589
+     2     0.000002     0.000000
+Per-process times:
+  rank   compute(s)      comm(s)
+     0     0.000011     0.000596
+     1     0.000017     0.000800
+     2     0.000017     0.000226
+Full matrix C (N=8):
+    0    6   -8   -2  -11    0    6   -8
+   17  -11    1   -2  -10   17  -11    1
+   -8    0    3   -9   19   -8    0    3
+   -5    4   -2   12    6   -5    4   -2
+    5   -6   -7   12  -14    5   -6   -7
+    1   -9   16   -9    1    1   -9   16
+  -10   16   -3   -2    9  -10   16   -3
+    0    6   -8   -2  -11    0    6   -8
+[exit=0  wall=1s]
+
+================================================================
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS --oversubscribe --map-by node -n 8 --hostfile hosts ./task1 8 1.4
 ================================================================
 Processes=8
   rank 0 on master
@@ -343,24 +443,33 @@ Processes=8
   rank 6 on master
   rank 7 on slave1
 
-========== Task 1.4  (Version C: Non-blocking Ring + OpenMP, p=8) ==========
+========== Task 1.4  (Version C: Non-blocking Ring + OpenMP) (p=8) ==========
 
 --- N=8, p=8, threads=1 ---
-Multiply:    0.000674239 s
-Wait(comm):  0.0706083 s
-Gatherv(C):  0.00748547 s
-Total:       0.760568 s
+Multiply:    3.7991e-05 s
+Wait(comm):  0.0290389 s
+Total:       0.744606 s
 Memory/proc (2 B-blocks): 0.00012207 MiB
 Per-step times (max over ranks):
   step   multiply(s)    wait(s)
-     0     0.000661     0.027564
-     1     0.000006     0.028677
-     2     0.000008     0.015221
-     3     0.000004     0.020879
-     4     0.000003     0.030367
-     5     0.000004     0.030023
-     6     0.000004     0.041101
-     7     0.000005     0.000000
+     0     0.000016     0.020668
+     1     0.000007     0.023657
+     2     0.000002     0.010665
+     3     0.000002     0.011178
+     4     0.000002     0.005020
+     5     0.000002     0.004476
+     6     0.000012     0.005049
+     7     0.000002     0.000000
+Per-process times:
+  rank   compute(s)      comm(s)
+     0     0.000019     0.027969
+     1     0.000024     0.014176
+     2     0.000038     0.027525
+     3     0.000023     0.026987
+     4     0.000019     0.014066
+     5     0.000030     0.015813
+     6     0.000024     0.019529
+     7     0.000034     0.029039
 Full matrix C (N=8):
     0    6   -8   -2  -11    0    6   -8
    17  -11    1   -2  -10   17  -11    1
@@ -372,9 +481,28 @@ Full matrix C (N=8):
     0    6   -8   -2  -11    0    6   -8
 [exit=0  wall=2s]
 
-######## TASK 1.1 — Serial + OpenMP ########
+######## TASK 1.1 — N=4000 serial i-j-k / i-k-j / OpenMP (single run, for Table 2) ########
 ================================================================
-$ OMP_NUM_THREADS=1 mpirun -n 1 --hostfile hosts ./task1 1000 1.1
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS -n 1 --hostfile hosts ./task1 4000 1.1
+================================================================
+Processes=1
+  rank 0 on master
+
+========== Task 1.1  (OpenMP, 1 thread) ==========
+
+--- N=4000 ---
+i-j-k (serial):        480.355 s
+  C(0,0)=-7  C(0,1)=5  C(1,0)=20  C(N/2,N/2)=9  C(N-1,N-1)=17
+i-k-j (serial):        32.8723 s
+  C(0,0)=-7  C(0,1)=5  C(1,0)=20  C(N/2,N/2)=9  C(N-1,N-1)=17
+i-k-j (OpenMP x1): 35.855 s
+  C(0,0)=-7  C(0,1)=5  C(1,0)=20  C(N/2,N/2)=9  C(N-1,N-1)=17
+[exit=0  wall=550s]
+
+######## REPEAT 1/1 ########
+######## TASK 1.1 — i-j-k vs i-k-j vs OpenMP, one node ########
+================================================================
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS -n 1 --hostfile hosts ./task1 1000 1.1
 ================================================================
 Processes=1
   rank 0 on master
@@ -382,16 +510,16 @@ Processes=1
 ========== Task 1.1  (OpenMP, 1 thread) ==========
 
 --- N=1000 ---
-i-j-k (serial):        0.917598 s
+i-j-k (serial):        0.946305 s
   C(0,0)=2  C(0,1)=-2  C(1,0)=7  C(N/2,N/2)=3  C(N-1,N-1)=9
-i-k-j (serial):        0.21876 s
+i-k-j (serial):        0.204672 s
   C(0,0)=2  C(0,1)=-2  C(1,0)=7  C(N/2,N/2)=3  C(N-1,N-1)=9
-i-k-j (OpenMP x1): 0.360777 s
+i-k-j (OpenMP x1): 0.366785 s
   C(0,0)=2  C(0,1)=-2  C(1,0)=7  C(N/2,N/2)=3  C(N-1,N-1)=9
-[exit=0  wall=2s]
+[exit=0  wall=3s]
 
 ================================================================
-$ OMP_NUM_THREADS=2 mpirun -n 1 --hostfile hosts ./task1 1000 1.1
+$ OMP_NUM_THREADS=2 mpirun -x OMP_NUM_THREADS -n 1 --hostfile hosts ./task1 1000 1.1
 ================================================================
 Processes=1
   rank 0 on master
@@ -399,16 +527,16 @@ Processes=1
 ========== Task 1.1  (OpenMP, 2 threads) ==========
 
 --- N=1000 ---
-i-j-k (serial):        0.931706 s
+i-j-k (serial):        0.930038 s
   C(0,0)=2  C(0,1)=-2  C(1,0)=7  C(N/2,N/2)=3  C(N-1,N-1)=9
-i-k-j (serial):        0.211654 s
+i-k-j (serial):        0.194769 s
   C(0,0)=2  C(0,1)=-2  C(1,0)=7  C(N/2,N/2)=3  C(N-1,N-1)=9
-i-k-j (OpenMP x2): 0.363056 s
+i-k-j (OpenMP x2): 0.377943 s
   C(0,0)=2  C(0,1)=-2  C(1,0)=7  C(N/2,N/2)=3  C(N-1,N-1)=9
 [exit=0  wall=2s]
 
 ================================================================
-$ OMP_NUM_THREADS=4 mpirun -n 1 --hostfile hosts ./task1 1000 1.1
+$ OMP_NUM_THREADS=4 mpirun -x OMP_NUM_THREADS -n 1 --hostfile hosts ./task1 1000 1.1
 ================================================================
 Processes=1
   rank 0 on master
@@ -416,16 +544,16 @@ Processes=1
 ========== Task 1.1  (OpenMP, 4 threads) ==========
 
 --- N=1000 ---
-i-j-k (serial):        0.929246 s
+i-j-k (serial):        0.898857 s
   C(0,0)=2  C(0,1)=-2  C(1,0)=7  C(N/2,N/2)=3  C(N-1,N-1)=9
-i-k-j (serial):        0.213214 s
+i-k-j (serial):        0.238055 s
   C(0,0)=2  C(0,1)=-2  C(1,0)=7  C(N/2,N/2)=3  C(N-1,N-1)=9
-i-k-j (OpenMP x4): 0.392666 s
+i-k-j (OpenMP x4): 0.366412 s
   C(0,0)=2  C(0,1)=-2  C(1,0)=7  C(N/2,N/2)=3  C(N-1,N-1)=9
-[exit=0  wall=3s]
+[exit=0  wall=2s]
 
 ================================================================
-$ OMP_NUM_THREADS=1 mpirun -n 1 --hostfile hosts ./task1 2000 1.1
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS -n 1 --hostfile hosts ./task1 2000 1.1
 ================================================================
 Processes=1
   rank 0 on master
@@ -433,33 +561,33 @@ Processes=1
 ========== Task 1.1  (OpenMP, 1 thread) ==========
 
 --- N=2000 ---
-i-j-k (serial):        29.6004 s
+i-j-k (serial):        30.1921 s
   C(0,0)=5  C(0,1)=-10  C(1,0)=15  C(N/2,N/2)=-12  C(N-1,N-1)=-5
-i-k-j (serial):        3.76764 s
+i-k-j (serial):        3.81433 s
   C(0,0)=5  C(0,1)=-10  C(1,0)=15  C(N/2,N/2)=-12  C(N-1,N-1)=-5
-i-k-j (OpenMP x1): 4.21254 s
-  C(0,0)=5  C(0,1)=-10  C(1,0)=15  C(N/2,N/2)=-12  C(N-1,N-1)=-5
-[exit=0  wall=38s]
-
-================================================================
-$ OMP_NUM_THREADS=2 mpirun -n 1 --hostfile hosts ./task1 2000 1.1
-================================================================
-Processes=1
-  rank 0 on master
-
-========== Task 1.1  (OpenMP, 2 threads) ==========
-
---- N=2000 ---
-i-j-k (serial):        30.2454 s
-  C(0,0)=5  C(0,1)=-10  C(1,0)=15  C(N/2,N/2)=-12  C(N-1,N-1)=-5
-i-k-j (serial):        3.84062 s
-  C(0,0)=5  C(0,1)=-10  C(1,0)=15  C(N/2,N/2)=-12  C(N-1,N-1)=-5
-i-k-j (OpenMP x2): 4.41842 s
+i-k-j (OpenMP x1): 4.26401 s
   C(0,0)=5  C(0,1)=-10  C(1,0)=15  C(N/2,N/2)=-12  C(N-1,N-1)=-5
 [exit=0  wall=39s]
 
 ================================================================
-$ OMP_NUM_THREADS=4 mpirun -n 1 --hostfile hosts ./task1 2000 1.1
+$ OMP_NUM_THREADS=2 mpirun -x OMP_NUM_THREADS -n 1 --hostfile hosts ./task1 2000 1.1
+================================================================
+Processes=1
+  rank 0 on master
+
+========== Task 1.1  (OpenMP, 2 threads) ==========
+
+--- N=2000 ---
+i-j-k (serial):        31.2646 s
+  C(0,0)=5  C(0,1)=-10  C(1,0)=15  C(N/2,N/2)=-12  C(N-1,N-1)=-5
+i-k-j (serial):        3.78297 s
+  C(0,0)=5  C(0,1)=-10  C(1,0)=15  C(N/2,N/2)=-12  C(N-1,N-1)=-5
+i-k-j (OpenMP x2): 4.43546 s
+  C(0,0)=5  C(0,1)=-10  C(1,0)=15  C(N/2,N/2)=-12  C(N-1,N-1)=-5
+[exit=0  wall=40s]
+
+================================================================
+$ OMP_NUM_THREADS=4 mpirun -x OMP_NUM_THREADS -n 1 --hostfile hosts ./task1 2000 1.1
 ================================================================
 Processes=1
   rank 0 on master
@@ -467,74 +595,61 @@ Processes=1
 ========== Task 1.1  (OpenMP, 4 threads) ==========
 
 --- N=2000 ---
-i-j-k (serial):        30.5403 s
+i-j-k (serial):        30.9555 s
   C(0,0)=5  C(0,1)=-10  C(1,0)=15  C(N/2,N/2)=-12  C(N-1,N-1)=-5
-i-k-j (serial):        3.88704 s
+i-k-j (serial):        3.84396 s
   C(0,0)=5  C(0,1)=-10  C(1,0)=15  C(N/2,N/2)=-12  C(N-1,N-1)=-5
-i-k-j (OpenMP x4): 4.30915 s
+i-k-j (OpenMP x4): 4.55948 s
   C(0,0)=5  C(0,1)=-10  C(1,0)=15  C(N/2,N/2)=-12  C(N-1,N-1)=-5
-[exit=0  wall=40s]
+[exit=0  wall=41s]
 
-######## TASK 1.2 ########
+######## TASK 1.2 — Version A (Scatterv / Bcast / Gatherv) ########
 ================================================================
-$ OMP_NUM_THREADS=1 mpirun -n 1 --hostfile hosts ./task1 2000 1.2
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS -n 1 --hostfile hosts ./task1 2000 1.2
 ================================================================
 Processes=1
   rank 0 on master
 
-========== Task 1.2  (Version A: Scatterv/Bcast/Gatherv, p=1) ==========
+========== Task 1.2  (Version A: Scatterv/Bcast/Gatherv) (p=1) ==========
 
 --- N=2000, p=1 ---
-Scatterv(A): 4.549e-06 s
-Bcast(B):    2.41e-07 s
-Multiply:    4.38115 s
-Gatherv(C):  8.12e-07 s
-Total:       4.38117 s
+Scatterv(A): 4.2379e-05 s
+Bcast(B):    2.91e-07 s
+Multiply:    4.34751 s
+Gatherv(C):  5.0204e-05 s
+Total:       4.34764 s
 Memory for B per process: 30.5176 MiB (x1 copies)
+Per-process times:
+  rank   compute(s)      comm(s)
+     0     4.347510     0.000093
   C(0,0)=5  C(0,1)=-10  C(1,0)=15  C(N/2,N/2)=-12  C(N-1,N-1)=-5
 [exit=0  wall=5s]
 
 ================================================================
-$ OMP_NUM_THREADS=1 mpirun -n 2 --hostfile hosts ./task1 2000 1.2
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS -n 2 --hostfile hosts ./task1 2000 1.2
 ================================================================
 Processes=2
   rank 0 on master
   rank 1 on slave1
 
-========== Task 1.2  (Version A: Scatterv/Bcast/Gatherv, p=2) ==========
+========== Task 1.2  (Version A: Scatterv/Bcast/Gatherv) (p=2) ==========
 
 --- N=2000, p=2 ---
-Scatterv(A): 0.0863924 s
-Bcast(B):    0.263381 s
-Multiply:    3.1625 s
-Gatherv(C):  0.0729839 s
-Total:       3.58635 s
+Scatterv(A): 0.0830589 s
+Bcast(B):    0.271875 s
+Multiply:    3.169 s
+Gatherv(C):  0.319726 s
+Total:       3.63393 s
 Memory for B per process: 30.5176 MiB (x2 copies)
+Per-process times:
+  rank   compute(s)      comm(s)
+     0     3.169002     0.434035
+     1     2.928540     0.674660
   C(0,0)=5  C(0,1)=-10  C(1,0)=15  C(N/2,N/2)=-12  C(N-1,N-1)=-5
 [exit=0  wall=4s]
 
 ================================================================
-$ OMP_NUM_THREADS=1 mpirun -n 3 --hostfile hosts ./task1 2000 1.2
-================================================================
-Processes=3
-  rank 0 on master
-  rank 1 on slave1
-  rank 2 on slave2
-
-========== Task 1.2  (Version A: Scatterv/Bcast/Gatherv, p=3) ==========
-
---- N=2000, p=3 ---
-Scatterv(A): 0.105596 s
-Bcast(B):    0.27479 s
-Multiply:    3.1581 s
-Gatherv(C):  0.231886 s
-Total:       3.63746 s
-Memory for B per process: 30.5176 MiB (x3 copies)
-  C(0,0)=5  C(0,1)=-10  C(1,0)=15  C(N/2,N/2)=-12  C(N-1,N-1)=-5
-[exit=0  wall=5s]
-
-================================================================
-$ OMP_NUM_THREADS=1 mpirun --oversubscribe --map-by node -n 4 --hostfile hosts ./task1 2000 1.2
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS --oversubscribe --map-by node -n 4 --hostfile hosts ./task1 2000 1.2
 ================================================================
 Processes=4
   rank 0 on master
@@ -542,20 +657,26 @@ Processes=4
   rank 2 on slave2
   rank 3 on master
 
-========== Task 1.2  (Version A: Scatterv/Bcast/Gatherv, p=4) ==========
+========== Task 1.2  (Version A: Scatterv/Bcast/Gatherv) (p=4) ==========
 
 --- N=2000, p=4 ---
-Scatterv(A): 0.0690943 s
-Bcast(B):    0.433605 s
-Multiply:    3.61433 s
-Gatherv(C):  1.56828 s
-Total:       4.30525 s
+Scatterv(A): 0.0678953 s
+Bcast(B):    0.570187 s
+Multiply:    3.7251 s
+Gatherv(C):  1.56906 s
+Total:       4.54498 s
 Memory for B per process: 30.5176 MiB (x4 copies)
+Per-process times:
+  rank   compute(s)      comm(s)
+     0     3.725100     0.312269
+     1     2.147434     0.467088
+     2     2.281671     2.194777
+     3     3.667208     0.834334
   C(0,0)=5  C(0,1)=-10  C(1,0)=15  C(N/2,N/2)=-12  C(N-1,N-1)=-5
 [exit=0  wall=5s]
 
 ================================================================
-$ OMP_NUM_THREADS=1 mpirun --oversubscribe --map-by node -n 8 --hostfile hosts ./task1 2000 1.2
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS --oversubscribe --map-by node -n 8 --hostfile hosts ./task1 2000 1.2
 ================================================================
 Processes=8
   rank 0 on master
@@ -567,77 +688,74 @@ Processes=8
   rank 6 on master
   rank 7 on slave1
 
-========== Task 1.2  (Version A: Scatterv/Bcast/Gatherv, p=8) ==========
+========== Task 1.2  (Version A: Scatterv/Bcast/Gatherv) (p=8) ==========
 
 --- N=2000, p=8 ---
-Scatterv(A): 0.207194 s
-Bcast(B):    1.11307 s
-Multiply:    3.1549 s
-Gatherv(C):  1.66869 s
-Total:       5.44733 s
+Scatterv(A): 0.271663 s
+Bcast(B):    1.15351 s
+Multiply:    3.87181 s
+Gatherv(C):  1.85319 s
+Total:       6.06104 s
 Memory for B per process: 30.5176 MiB (x8 copies)
+Per-process times:
+  rank   compute(s)      comm(s)
+     0     3.713480     1.504755
+     1     2.778291     1.046289
+     2     2.195468     2.037627
+     3     3.599098     0.508253
+     4     2.793577     2.307770
+     5     2.200469     3.077609
+     6     3.871811     1.381347
+     7     2.730154     2.698482
   C(0,0)=5  C(0,1)=-10  C(1,0)=15  C(N/2,N/2)=-12  C(N-1,N-1)=-5
-[exit=0  wall=6s]
+[exit=0  wall=8s]
 
 ================================================================
-$ OMP_NUM_THREADS=1 mpirun -n 1 --hostfile hosts ./task1 4000 1.2
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS -n 1 --hostfile hosts ./task1 4000 1.2
 ================================================================
 Processes=1
   rank 0 on master
 
-========== Task 1.2  (Version A: Scatterv/Bcast/Gatherv, p=1) ==========
+========== Task 1.2  (Version A: Scatterv/Bcast/Gatherv) (p=1) ==========
 
 --- N=4000, p=1 ---
-Scatterv(A): 4.619e-06 s
-Bcast(B):    2.61e-07 s
-Multiply:    37.0764 s
-Gatherv(C):  1.132e-06 s
-Total:       37.0764 s
+Scatterv(A): 1.0149e-05 s
+Bcast(B):    7.42e-07 s
+Multiply:    41.4474 s
+Gatherv(C):  1.142e-06 s
+Total:       41.4475 s
 Memory for B per process: 122.07 MiB (x1 copies)
+Per-process times:
+  rank   compute(s)      comm(s)
+     0    41.447448     0.000012
   C(0,0)=-7  C(0,1)=5  C(1,0)=20  C(N/2,N/2)=9  C(N-1,N-1)=17
-[exit=0  wall=38s]
+[exit=0  wall=42s]
 
 ================================================================
-$ OMP_NUM_THREADS=1 mpirun -n 2 --hostfile hosts ./task1 4000 1.2
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS -n 2 --hostfile hosts ./task1 4000 1.2
 ================================================================
 Processes=2
   rank 0 on master
   rank 1 on slave1
 
-========== Task 1.2  (Version A: Scatterv/Bcast/Gatherv, p=2) ==========
+========== Task 1.2  (Version A: Scatterv/Bcast/Gatherv) (p=2) ==========
 
 --- N=4000, p=2 ---
-Scatterv(A): 0.283168 s
-Bcast(B):    0.918532 s
-Multiply:    27.6373 s
-Gatherv(C):  0.297417 s
-Total:       29.1402 s
+Scatterv(A): 0.286076 s
+Bcast(B):    0.926826 s
+Multiply:    28.2965 s
+Gatherv(C):  2.99137 s
+Total:       29.8363 s
 Memory for B per process: 122.07 MiB (x2 copies)
+Per-process times:
+  rank   compute(s)      comm(s)
+     0    28.296491     1.511547
+     1    25.619195     4.204272
   C(0,0)=-7  C(0,1)=5  C(1,0)=20  C(N/2,N/2)=9  C(N-1,N-1)=17
 [exit=0  wall=31s]
 
 ================================================================
-$ OMP_NUM_THREADS=1 mpirun -n 3 --hostfile hosts ./task1 4000 1.2
-================================================================
-Processes=3
-  rank 0 on master
-  rank 1 on slave1
-  rank 2 on slave2
-
-========== Task 1.2  (Version A: Scatterv/Bcast/Gatherv, p=3) ==========
-
---- N=4000, p=3 ---
-Scatterv(A): 0.378763 s
-Bcast(B):    1.15696 s
-Multiply:    26.4633 s
-Gatherv(C):  1.95759 s
-Total:       28.3892 s
-Memory for B per process: 122.07 MiB (x3 copies)
-  C(0,0)=-7  C(0,1)=5  C(1,0)=20  C(N/2,N/2)=9  C(N-1,N-1)=17
-[exit=0  wall=29s]
-
-================================================================
-$ OMP_NUM_THREADS=1 mpirun --oversubscribe --map-by node -n 4 --hostfile hosts ./task1 4000 1.2
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS --oversubscribe --map-by node -n 4 --hostfile hosts ./task1 4000 1.2
 ================================================================
 Processes=4
   rank 0 on master
@@ -645,100 +763,110 @@ Processes=4
   rank 2 on slave2
   rank 3 on master
 
-========== Task 1.2  (Version A: Scatterv/Bcast/Gatherv, p=4) ==========
+========== Task 1.2  (Version A: Scatterv/Bcast/Gatherv) (p=4) ==========
 
 --- N=4000, p=4 ---
-Scatterv(A): 0.295078 s
-Bcast(B):    1.92413 s
-Multiply:    29.216 s
-Gatherv(C):  10.6489 s
-Total:       32.3026 s
+Scatterv(A): 0.300808 s
+Bcast(B):    2.23955 s
+Multiply:    29.434 s
+Gatherv(C):  11.7775 s
+Total:       33.5349 s
 Memory for B per process: 122.07 MiB (x4 copies)
-  C(0,0)=-7  C(0,1)=5  C(1,0)=20  C(N/2,N/2)=9  C(N-1,N-1)=17
-[exit=0  wall=33s]
-
-================================================================
-$ OMP_NUM_THREADS=1 mpirun --oversubscribe --map-by node -n 8 --hostfile hosts ./task1 4000 1.2
-================================================================
-Processes=8
-  rank 0 on master
-  rank 1 on slave1
-  rank 2 on slave2
-  rank 3 on master
-  rank 4 on slave1
-  rank 5 on slave2
-  rank 6 on master
-  rank 7 on slave1
-
-========== Task 1.2  (Version A: Scatterv/Bcast/Gatherv, p=8) ==========
-
---- N=4000, p=8 ---
-Scatterv(A): 1.06462 s
-Bcast(B):    4.53163 s
-Multiply:    26.5784 s
-Gatherv(C):  9.93438 s
-Total:       33.1871 s
-Memory for B per process: 122.07 MiB (x8 copies)
+Per-process times:
+  rank   compute(s)      comm(s)
+     0    29.434013     2.387391
+     1    18.159506     3.315090
+     2    19.096659    14.270530
+     3    28.245312     5.253842
   C(0,0)=-7  C(0,1)=5  C(1,0)=20  C(N/2,N/2)=9  C(N-1,N-1)=17
 [exit=0  wall=35s]
 
-######## TASK 1.3 ########
 ================================================================
-$ OMP_NUM_THREADS=1 mpirun -n 1 --hostfile hosts ./task1 2000 1.3
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS --oversubscribe --map-by node -n 8 --hostfile hosts ./task1 4000 1.2
+================================================================
+Processes=8
+  rank 0 on master
+  rank 1 on slave1
+  rank 2 on slave2
+  rank 3 on master
+  rank 4 on slave1
+  rank 5 on slave2
+  rank 6 on master
+  rank 7 on slave1
+
+========== Task 1.2  (Version A: Scatterv/Bcast/Gatherv) (p=8) ==========
+
+--- N=4000, p=8 ---
+Scatterv(A): 0.861158 s
+Bcast(B):    4.02061 s
+Multiply:    27.3678 s
+Gatherv(C):  9.9322 s
+Total:       33.6092 s
+Memory for B per process: 122.07 MiB (x8 copies)
+Per-process times:
+  rank   compute(s)      comm(s)
+     0    26.902045     6.080625
+     1    25.678277     3.815519
+     2    20.005174     4.568471
+     3    26.347798     1.925057
+     4    25.865066     6.344149
+     5    19.018353    13.462005
+     6    27.367781     5.263886
+     7    25.759088     7.248987
+  C(0,0)=-7  C(0,1)=5  C(1,0)=20  C(N/2,N/2)=9  C(N-1,N-1)=17
+[exit=0  wall=35s]
+
+######## TASK 1.3 — Version B (blocking ring) ########
+================================================================
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS -n 1 --hostfile hosts ./task1 2000 1.3
 ================================================================
 Processes=1
   rank 0 on master
 
-========== Task 1.3  (Version B: Blocking Ring, p=1) ==========
+========== Task 1.3  (Version B: Blocking Ring) (p=1) ==========
 
 --- N=2000, p=1 ---
 Ring-comm:   0 s
-Multiply:    4.02289 s
-Gatherv(C):  1.463e-06 s
-Total:       4.04742 s
+Multiply:    4.01809 s
+Total:       4.0181 s
 Memory/proc (2 B-blocks): 61.0352 MiB (vs 30.5176 MiB for Version A's full B)
-  C(0,0)=5  C(0,1)=-10  C(1,0)=15  C(N/2,N/2)=-12  C(N-1,N-1)=-5
-[exit=0  wall=5s]
+Per-process times:
+  rank   compute(s)      comm(s)
+     0     4.018093     0.000000
+  C(0,0)=5  [rank 0]
+  C(0,1)=-10  [rank 0]
+  C(1,0)=15  [rank 0]
+  C(1000,1000)=-12  [rank 0]
+  C(1999,1999)=-5  [rank 0]
+[exit=0  wall=4s]
 
 ================================================================
-$ OMP_NUM_THREADS=1 mpirun -n 2 --hostfile hosts ./task1 2000 1.3
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS -n 2 --hostfile hosts ./task1 2000 1.3
 ================================================================
 Processes=2
   rank 0 on master
   rank 1 on slave1
 
-========== Task 1.3  (Version B: Blocking Ring, p=2) ==========
+========== Task 1.3  (Version B: Blocking Ring) (p=2) ==========
 
 --- N=2000, p=2 ---
-Ring-comm:   0.167634 s
-Multiply:    2.56594 s
-Gatherv(C):  0.0712165 s
-Total:       2.77749 s
+Ring-comm:   0.218479 s
+Multiply:    2.61372 s
+Total:       2.78144 s
 Memory/proc (2 B-blocks): 30.5176 MiB (vs 30.5176 MiB for Version A's full B)
-  C(0,0)=5  C(0,1)=-10  C(1,0)=15  C(N/2,N/2)=-12  C(N-1,N-1)=-5
-[exit=0  wall=4s]
-
-================================================================
-$ OMP_NUM_THREADS=1 mpirun -n 3 --hostfile hosts ./task1 2000 1.3
-================================================================
-Processes=3
-  rank 0 on master
-  rank 1 on slave1
-  rank 2 on slave2
-
-========== Task 1.3  (Version B: Blocking Ring, p=3) ==========
-
---- N=2000, p=3 ---
-Ring-comm:   0.246279 s
-Multiply:    2.21067 s
-Gatherv(C):  0.185126 s
-Total:       2.57508 s
-Memory/proc (2 B-blocks): 20.3552 MiB (vs 30.5176 MiB for Version A's full B)
-  C(0,0)=5  C(0,1)=-10  C(1,0)=15  C(N/2,N/2)=-12  C(N-1,N-1)=-5
+Per-process times:
+  rank   compute(s)      comm(s)
+     0     2.613718     0.165438
+     1     2.488426     0.218479
+  C(0,0)=5  [rank 0]
+  C(0,1)=-10  [rank 0]
+  C(1,0)=15  [rank 0]
+  C(1000,1000)=-12  [rank 1]
+  C(1999,1999)=-5  [rank 1]
 [exit=0  wall=3s]
 
 ================================================================
-$ OMP_NUM_THREADS=1 mpirun --oversubscribe --map-by node -n 4 --hostfile hosts ./task1 2000 1.3
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS --oversubscribe --map-by node -n 4 --hostfile hosts ./task1 2000 1.3
 ================================================================
 Processes=4
   rank 0 on master
@@ -746,19 +874,28 @@ Processes=4
   rank 2 on slave2
   rank 3 on master
 
-========== Task 1.3  (Version B: Blocking Ring, p=4) ==========
+========== Task 1.3  (Version B: Blocking Ring) (p=4) ==========
 
 --- N=2000, p=4 ---
-Ring-comm:   0.747737 s
-Multiply:    1.83804 s
-Gatherv(C):  0.11465 s
-Total:       2.16042 s
+Ring-comm:   0.708279 s
+Multiply:    1.87301 s
+Total:       2.112 s
 Memory/proc (2 B-blocks): 15.2588 MiB (vs 30.5176 MiB for Version A's full B)
-  C(0,0)=5  C(0,1)=-10  C(1,0)=15  C(N/2,N/2)=-12  C(N-1,N-1)=-5
+Per-process times:
+  rank   compute(s)      comm(s)
+     0     1.873009     0.196945
+     1     1.321015     0.619859
+     2     1.232480     0.708279
+     3     1.846203     0.231078
+  C(0,0)=5  [rank 0]
+  C(0,1)=-10  [rank 0]
+  C(1,0)=15  [rank 0]
+  C(1000,1000)=-12  [rank 2]
+  C(1999,1999)=-5  [rank 3]
 [exit=0  wall=3s]
 
 ================================================================
-$ OMP_NUM_THREADS=1 mpirun --oversubscribe --map-by node -n 8 --hostfile hosts ./task1 2000 1.3
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS --oversubscribe --map-by node -n 8 --hostfile hosts ./task1 2000 1.3
 ================================================================
 Processes=8
   rank 0 on master
@@ -770,459 +907,511 @@ Processes=8
   rank 6 on master
   rank 7 on slave1
 
-========== Task 1.3  (Version B: Blocking Ring, p=8) ==========
+========== Task 1.3  (Version B: Blocking Ring) (p=8) ==========
 
 --- N=2000, p=8 ---
-Ring-comm:   1.12731 s
-Multiply:    0.774302 s
-Gatherv(C):  0.204935 s
-Total:       2.52612 s
+Ring-comm:   1.46521 s
+Multiply:    0.864737 s
+Total:       2.68924 s
 Memory/proc (2 B-blocks): 7.62939 MiB (vs 30.5176 MiB for Version A's full B)
-  C(0,0)=5  C(0,1)=-10  C(1,0)=15  C(N/2,N/2)=-12  C(N-1,N-1)=-5
-[exit=0  wall=3s]
+Per-process times:
+  rank   compute(s)      comm(s)
+     0     0.470169     1.451844
+     1     0.864737     1.086199
+     2     0.529284     1.343561
+     3     0.666616     1.171568
+     4     0.758030     1.206649
+     5     0.593728     1.273268
+     6     0.404937     1.465206
+     7     0.763250     1.175285
+  C(0,0)=5  [rank 0]
+  C(0,1)=-10  [rank 0]
+  C(1,0)=15  [rank 0]
+  C(1000,1000)=-12  [rank 4]
+  C(1999,1999)=-5  [rank 7]
+[exit=0  wall=4s]
 
 ================================================================
-$ OMP_NUM_THREADS=1 mpirun -n 1 --hostfile hosts ./task1 4000 1.3
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS -n 1 --hostfile hosts ./task1 4000 1.3
 ================================================================
 Processes=1
   rank 0 on master
 
-========== Task 1.3  (Version B: Blocking Ring, p=1) ==========
+========== Task 1.3  (Version B: Blocking Ring) (p=1) ==========
 
 --- N=4000, p=1 ---
 Ring-comm:   0 s
-Multiply:    30.7373 s
-Gatherv(C):  1.382e-06 s
-Total:       30.863 s
+Multiply:    34.7907 s
+Total:       34.7907 s
 Memory/proc (2 B-blocks): 244.141 MiB (vs 122.07 MiB for Version A's full B)
-  C(0,0)=-7  C(0,1)=5  C(1,0)=20  C(N/2,N/2)=9  C(N-1,N-1)=17
-[exit=0  wall=31s]
+Per-process times:
+  rank   compute(s)      comm(s)
+     0    34.790657     0.000000
+  C(0,0)=-7  [rank 0]
+  C(0,1)=5  [rank 0]
+  C(1,0)=20  [rank 0]
+  C(2000,2000)=9  [rank 0]
+  C(3999,3999)=17  [rank 0]
+[exit=0  wall=36s]
 
 ================================================================
-$ OMP_NUM_THREADS=1 mpirun -n 2 --hostfile hosts ./task1 4000 1.3
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS -n 2 --hostfile hosts ./task1 4000 1.3
 ================================================================
 Processes=2
   rank 0 on master
   rank 1 on slave1
 
-========== Task 1.3  (Version B: Blocking Ring, p=2) ==========
+========== Task 1.3  (Version B: Blocking Ring) (p=2) ==========
 
 --- N=4000, p=2 ---
-Ring-comm:   2.03176 s
-Multiply:    26.3451 s
-Gatherv(C):  1.98259 s
-Total:       27.2318 s
+Ring-comm:   2.44711 s
+Multiply:    26.5249 s
+Total:       27.0636 s
 Memory/proc (2 B-blocks): 122.07 MiB (vs 122.07 MiB for Version A's full B)
-  C(0,0)=-7  C(0,1)=5  C(1,0)=20  C(N/2,N/2)=9  C(N-1,N-1)=17
-[exit=0  wall=29s]
-
-================================================================
-$ OMP_NUM_THREADS=1 mpirun -n 3 --hostfile hosts ./task1 4000 1.3
-================================================================
-Processes=3
-  rank 0 on master
-  rank 1 on slave1
-  rank 2 on slave2
-
-========== Task 1.3  (Version B: Blocking Ring, p=3) ==========
-
---- N=4000, p=3 ---
-Ring-comm:   1.67709 s
-Multiply:    24.2134 s
-Gatherv(C):  1.37152 s
-Total:       25.7515 s
-Memory/proc (2 B-blocks): 81.4209 MiB (vs 122.07 MiB for Version A's full B)
-  C(0,0)=-7  C(0,1)=5  C(1,0)=20  C(N/2,N/2)=9  C(N-1,N-1)=17
-[exit=0  wall=26s]
-
-================================================================
-$ OMP_NUM_THREADS=1 mpirun --oversubscribe --map-by node -n 4 --hostfile hosts ./task1 4000 1.3
-================================================================
-Processes=4
-  rank 0 on master
-  rank 1 on slave1
-  rank 2 on slave2
-  rank 3 on master
-
-========== Task 1.3  (Version B: Blocking Ring, p=4) ==========
-
---- N=4000, p=4 ---
-Ring-comm:   8.29843 s
-Multiply:    27.7225 s
-Gatherv(C):  0.392367 s
-Total:       29.6192 s
-Memory/proc (2 B-blocks): 61.0352 MiB (vs 122.07 MiB for Version A's full B)
-  C(0,0)=-7  C(0,1)=5  C(1,0)=20  C(N/2,N/2)=9  C(N-1,N-1)=17
-[exit=0  wall=31s]
-
-================================================================
-$ OMP_NUM_THREADS=1 mpirun --oversubscribe --map-by node -n 8 --hostfile hosts ./task1 4000 1.3
-================================================================
-Processes=8
-  rank 0 on master
-  rank 1 on slave1
-  rank 2 on slave2
-  rank 3 on master
-  rank 4 on slave1
-  rank 5 on slave2
-  rank 6 on master
-  rank 7 on slave1
-
-========== Task 1.3  (Version B: Blocking Ring, p=8) ==========
-
---- N=4000, p=8 ---
-Ring-comm:   9.07664 s
-Multiply:    27.0305 s
-Gatherv(C):  0.854569 s
-Total:       32.7505 s
-Memory/proc (2 B-blocks): 30.5176 MiB (vs 122.07 MiB for Version A's full B)
-  C(0,0)=-7  C(0,1)=5  C(1,0)=20  C(N/2,N/2)=9  C(N-1,N-1)=17
-[exit=0  wall=34s]
-
-######## TASK 1.4 — Non-blocking ring + OpenMP (one process per core) ########
-================================================================
-$ OMP_NUM_THREADS=1 mpirun -n 1 --hostfile hosts ./task1 2000 1.4
-================================================================
-Processes=1
-  rank 0 on master
-
-========== Task 1.4  (Version C: Non-blocking Ring + OpenMP, p=1) ==========
-
---- N=2000, p=1, threads=1 ---
-Multiply:    4.91157 s
-Wait(comm):  0 s
-Gatherv(C):  3.707e-06 s
-Total:       4.94347 s
-Memory/proc (2 B-blocks): 61.0352 MiB
-Per-step times (max over ranks):
-  step   multiply(s)    wait(s)
-     0     4.911570     0.000000
-  C(0,0)=5  C(0,1)=-10  C(1,0)=15  C(N/2,N/2)=-12  C(N-1,N-1)=-5
-[exit=0  wall=6s]
-
-================================================================
-$ OMP_NUM_THREADS=1 mpirun -n 2 --hostfile hosts ./task1 2000 1.4
-================================================================
-Processes=2
-  rank 0 on master
-  rank 1 on slave1
-
-========== Task 1.4  (Version C: Non-blocking Ring + OpenMP, p=2) ==========
-
---- N=2000, p=2, threads=1 ---
-Multiply:    3.24662 s
-Wait(comm):  0.179527 s
-Gatherv(C):  0.169314 s
-Total:       3.51641 s
-Memory/proc (2 B-blocks): 30.5176 MiB
-Per-step times (max over ranks):
-  step   multiply(s)    wait(s)
-     0     1.615024     0.179527
-     1     1.631598     0.000000
-  C(0,0)=5  C(0,1)=-10  C(1,0)=15  C(N/2,N/2)=-12  C(N-1,N-1)=-5
-[exit=0  wall=5s]
-
-================================================================
-$ OMP_NUM_THREADS=1 mpirun -n 3 --hostfile hosts ./task1 2000 1.4
-================================================================
-Processes=3
-  rank 0 on master
-  rank 1 on slave1
-  rank 2 on slave2
-
-========== Task 1.4  (Version C: Non-blocking Ring + OpenMP, p=3) ==========
-
---- N=2000, p=3, threads=1 ---
-Multiply:    3.23837 s
-Wait(comm):  1.08372 s
-Gatherv(C):  0.197011 s
-Total:       3.78398 s
-Memory/proc (2 B-blocks): 20.3552 MiB
-Per-step times (max over ranks):
-  step   multiply(s)    wait(s)
-     0     1.074179     0.529385
-     1     1.093256     0.574291
-     2     1.070941     0.000000
-  C(0,0)=5  C(0,1)=-10  C(1,0)=15  C(N/2,N/2)=-12  C(N-1,N-1)=-5
-[exit=0  wall=4s]
-
-================================================================
-$ OMP_NUM_THREADS=1 mpirun --oversubscribe --map-by node -n 4 --hostfile hosts ./task1 2000 1.4
-================================================================
-Processes=4
-  rank 0 on master
-  rank 1 on slave1
-  rank 2 on slave2
-  rank 3 on master
-
-========== Task 1.4  (Version C: Non-blocking Ring + OpenMP, p=4) ==========
-
---- N=2000, p=4, threads=1 ---
-Multiply:    2.20324 s
-Wait(comm):  1.13669 s
-Gatherv(C):  0.134653 s
-Total:       2.82492 s
-Memory/proc (2 B-blocks): 15.2588 MiB
-Per-step times (max over ranks):
-  step   multiply(s)    wait(s)
-     0     0.600029     0.331329
-     1     0.539604     0.414728
-     2     0.627917     0.390631
-     3     0.456237     0.000000
-  C(0,0)=5  C(0,1)=-10  C(1,0)=15  C(N/2,N/2)=-12  C(N-1,N-1)=-5
-[exit=0  wall=4s]
-
-================================================================
-$ OMP_NUM_THREADS=1 mpirun --oversubscribe --map-by node -n 8 --hostfile hosts ./task1 2000 1.4
-================================================================
-Processes=8
-  rank 0 on master
-  rank 1 on slave1
-  rank 2 on slave2
-  rank 3 on master
-  rank 4 on slave1
-  rank 5 on slave2
-  rank 6 on master
-  rank 7 on slave1
-
-========== Task 1.4  (Version C: Non-blocking Ring + OpenMP, p=8) ==========
-
---- N=2000, p=8, threads=1 ---
-Multiply:    2.11033 s
-Wait(comm):  1.87068 s
-Gatherv(C):  0.21764 s
-Total:       4.12768 s
-Memory/proc (2 B-blocks): 7.62939 MiB
-Per-step times (max over ranks):
-  step   multiply(s)    wait(s)
-     0     0.203498     0.259293
-     1     0.397242     0.465764
-     2     0.587360     0.429309
-     3     0.208800     0.564216
-     4     0.225218     0.219759
-     5     0.210674     0.285697
-     6     0.199331     0.254032
-     7     0.181211     0.000000
-  C(0,0)=5  C(0,1)=-10  C(1,0)=15  C(N/2,N/2)=-12  C(N-1,N-1)=-5
-[exit=0  wall=6s]
-
-================================================================
-$ OMP_NUM_THREADS=1 mpirun -n 1 --hostfile hosts ./task1 4000 1.4
-================================================================
-Processes=1
-  rank 0 on master
-
-========== Task 1.4  (Version C: Non-blocking Ring + OpenMP, p=1) ==========
-
---- N=4000, p=1, threads=1 ---
-Multiply:    35.7515 s
-Wait(comm):  0 s
-Gatherv(C):  1.894e-06 s
-Total:       36.0192 s
-Memory/proc (2 B-blocks): 244.141 MiB
-Per-step times (max over ranks):
-  step   multiply(s)    wait(s)
-     0    35.751483     0.000000
-  C(0,0)=-7  C(0,1)=5  C(1,0)=20  C(N/2,N/2)=9  C(N-1,N-1)=17
-[exit=0  wall=37s]
-
-================================================================
-$ OMP_NUM_THREADS=1 mpirun -n 2 --hostfile hosts ./task1 4000 1.4
-================================================================
-Processes=2
-  rank 0 on master
-  rank 1 on slave1
-
-========== Task 1.4  (Version C: Non-blocking Ring + OpenMP, p=2) ==========
-
---- N=4000, p=2, threads=1 ---
-Multiply:    27.9887 s
-Wait(comm):  2.15352 s
-Gatherv(C):  2.68486 s
-Total:       29.1027 s
-Memory/proc (2 B-blocks): 122.07 MiB
-Per-step times (max over ranks):
-  step   multiply(s)    wait(s)
-     0    13.856391     2.153524
-     1    14.132283     0.000000
-  C(0,0)=-7  C(0,1)=5  C(1,0)=20  C(N/2,N/2)=9  C(N-1,N-1)=17
-[exit=0  wall=30s]
-
-================================================================
-$ OMP_NUM_THREADS=1 mpirun -n 3 --hostfile hosts ./task1 4000 1.4
-================================================================
-Processes=3
-  rank 0 on master
-  rank 1 on slave1
-  rank 2 on slave2
-
-========== Task 1.4  (Version C: Non-blocking Ring + OpenMP, p=3) ==========
-
---- N=4000, p=3, threads=1 ---
-Multiply:    24.4581 s
-Wait(comm):  1.4682 s
-Gatherv(C):  0.941557 s
-Total:       25.5533 s
-Memory/proc (2 B-blocks): 81.4209 MiB
-Per-step times (max over ranks):
-  step   multiply(s)    wait(s)
-     0     8.208738     0.768726
-     1     8.127725     0.730260
-     2     8.121632     0.000000
-  C(0,0)=-7  C(0,1)=5  C(1,0)=20  C(N/2,N/2)=9  C(N-1,N-1)=17
-[exit=0  wall=27s]
-
-================================================================
-$ OMP_NUM_THREADS=1 mpirun --oversubscribe --map-by node -n 4 --hostfile hosts ./task1 4000 1.4
-================================================================
-Processes=4
-  rank 0 on master
-  rank 1 on slave1
-  rank 2 on slave2
-  rank 3 on master
-
-========== Task 1.4  (Version C: Non-blocking Ring + OpenMP, p=4) ==========
-
---- N=4000, p=4, threads=1 ---
-Multiply:    27.4011 s
-Wait(comm):  8.02545 s
-Gatherv(C):  0.342604 s
-Total:       28.3894 s
-Memory/proc (2 B-blocks): 61.0352 MiB
-Per-step times (max over ranks):
-  step   multiply(s)    wait(s)
-     0     7.033212     2.866281
-     1     6.648561     2.415913
-     2     7.094710     2.872922
-     3     6.628272     0.000000
-  C(0,0)=-7  C(0,1)=5  C(1,0)=20  C(N/2,N/2)=9  C(N-1,N-1)=17
-[exit=0  wall=29s]
-
-================================================================
-$ OMP_NUM_THREADS=1 mpirun --oversubscribe --map-by node -n 8 --hostfile hosts ./task1 4000 1.4
-================================================================
-Processes=8
-  rank 0 on master
-  rank 1 on slave1
-  rank 2 on slave2
-  rank 3 on master
-  rank 4 on slave1
-  rank 5 on slave2
-  rank 6 on master
-  rank 7 on slave1
-
-========== Task 1.4  (Version C: Non-blocking Ring + OpenMP, p=8) ==========
-
---- N=4000, p=8, threads=1 ---
-Multiply:    23.8878 s
-Wait(comm):  8.4391 s
-Gatherv(C):  0.591505 s
-Total:       27.3864 s
-Memory/proc (2 B-blocks): 30.5176 MiB
-Per-step times (max over ranks):
-  step   multiply(s)    wait(s)
-     0     2.845175     1.105030
-     1     3.115478     1.355171
-     2     2.951708     1.216096
-     3     3.095353     1.410723
-     4     2.955861     1.321072
-     5     3.193605     1.355869
-     6     2.905826     1.214256
-     7     2.969412     0.000000
-  C(0,0)=-7  C(0,1)=5  C(1,0)=20  C(N/2,N/2)=9  C(N-1,N-1)=17
-[exit=0  wall=29s]
-
-######## TASK 1.4 — Hybrid (fewer processes, more threads each) ########
-================================================================
-$ OMP_NUM_THREADS=4 mpirun -n 2 --hostfile hosts ./task1 2000 1.4
-================================================================
-Processes=2
-  rank 0 on master
-  rank 1 on slave1
-
-========== Task 1.4  (Version C: Non-blocking Ring + OpenMP, p=2) ==========
-
---- N=2000, p=2, threads=4 ---
-Multiply:    2.66579 s
-Wait(comm):  0.158942 s
-Gatherv(C):  0.214685 s
-Total:       2.91585 s
-Memory/proc (2 B-blocks): 30.5176 MiB
-Per-step times (max over ranks):
-  step   multiply(s)    wait(s)
-     0     1.292767     0.158942
-     1     1.381191     0.000000
-  C(0,0)=5  C(0,1)=-10  C(1,0)=15  C(N/2,N/2)=-12  C(N-1,N-1)=-5
-[exit=0  wall=4s]
-
-================================================================
-$ OMP_NUM_THREADS=4 mpirun -n 3 --hostfile hosts ./task1 2000 1.4
-================================================================
-Processes=3
-  rank 0 on master
-  rank 1 on slave1
-  rank 2 on slave2
-
-========== Task 1.4  (Version C: Non-blocking Ring + OpenMP, p=3) ==========
-
---- N=2000, p=3, threads=4 ---
-Multiply:    2.24033 s
-Wait(comm):  0.272721 s
-Gatherv(C):  0.11369 s
-Total:       2.55318 s
-Memory/proc (2 B-blocks): 20.3552 MiB
-Per-step times (max over ranks):
-  step   multiply(s)    wait(s)
-     0     0.759990     0.170058
-     1     0.759170     0.102663
-     2     0.738079     0.000000
-  C(0,0)=5  C(0,1)=-10  C(1,0)=15  C(N/2,N/2)=-12  C(N-1,N-1)=-5
-[exit=0  wall=3s]
-
-================================================================
-$ OMP_NUM_THREADS=4 mpirun -n 2 --hostfile hosts ./task1 4000 1.4
-================================================================
-Processes=2
-  rank 0 on master
-  rank 1 on slave1
-
-========== Task 1.4  (Version C: Non-blocking Ring + OpenMP, p=2) ==========
-
---- N=4000, p=2, threads=4 ---
-Multiply:    26.0508 s
-Wait(comm):  1.63545 s
-Gatherv(C):  0.816665 s
-Total:       27.0274 s
-Memory/proc (2 B-blocks): 122.07 MiB
-Per-step times (max over ranks):
-  step   multiply(s)    wait(s)
-     0    13.343771     1.635446
-     1    12.706987     0.000000
-  C(0,0)=-7  C(0,1)=5  C(1,0)=20  C(N/2,N/2)=9  C(N-1,N-1)=17
+Per-process times:
+  rank   compute(s)      comm(s)
+     0    26.524863     0.537633
+     1    23.000197     2.447106
+  C(0,0)=-7  [rank 0]
+  C(0,1)=5  [rank 0]
+  C(1,0)=20  [rank 0]
+  C(2000,2000)=9  [rank 1]
+  C(3999,3999)=17  [rank 1]
 [exit=0  wall=28s]
 
 ================================================================
-$ OMP_NUM_THREADS=4 mpirun -n 3 --hostfile hosts ./task1 4000 1.4
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS --oversubscribe --map-by node -n 4 --hostfile hosts ./task1 4000 1.3
+================================================================
+Processes=4
+  rank 0 on master
+  rank 1 on slave1
+  rank 2 on slave2
+  rank 3 on master
+
+========== Task 1.3  (Version B: Blocking Ring) (p=4) ==========
+
+--- N=4000, p=4 ---
+Ring-comm:   9.19479 s
+Multiply:    26.8742 s
+Total:       27.5632 s
+Memory/proc (2 B-blocks): 61.0352 MiB (vs 122.07 MiB for Version A's full B)
+Per-process times:
+  rank   compute(s)      comm(s)
+     0    26.644977     0.884939
+     1    16.047371     9.194794
+     2    16.652523     8.625231
+     3    26.874208     0.614101
+  C(0,0)=-7  [rank 0]
+  C(0,1)=5  [rank 0]
+  C(1,0)=20  [rank 0]
+  C(2000,2000)=9  [rank 2]
+  C(3999,3999)=17  [rank 3]
+[exit=0  wall=29s]
+
+================================================================
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS --oversubscribe --map-by node -n 8 --hostfile hosts ./task1 4000 1.3
+================================================================
+Processes=8
+  rank 0 on master
+  rank 1 on slave1
+  rank 2 on slave2
+  rank 3 on master
+  rank 4 on slave1
+  rank 5 on slave2
+  rank 6 on master
+  rank 7 on slave1
+
+========== Task 1.3  (Version B: Blocking Ring) (p=8) ==========
+
+--- N=4000, p=8 ---
+Ring-comm:   9.72993 s
+Multiply:    23.6539 s
+Total:       26.995 s
+Memory/proc (2 B-blocks): 30.5176 MiB (vs 122.07 MiB for Version A's full B)
+Per-process times:
+  rank   compute(s)      comm(s)
+     0    23.304952     2.944068
+     1    20.912878     5.007407
+     2    16.019687     9.294974
+     3    23.653936     2.530998
+     4    20.091275     6.113162
+     5    15.906567     9.729926
+     6    23.171058     3.097440
+     7    20.659803     5.413667
+  C(0,0)=-7  [rank 0]
+  C(0,1)=5  [rank 0]
+  C(1,0)=20  [rank 0]
+  C(2000,2000)=9  [rank 4]
+  C(3999,3999)=17  [rank 7]
+[exit=0  wall=28s]
+
+######## TASK 1.4 — Version C (non-blocking ring), one process per core ########
+================================================================
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS -n 1 --hostfile hosts ./task1 2000 1.4
+================================================================
+Processes=1
+  rank 0 on master
+
+========== Task 1.4  (Version C: Non-blocking Ring + OpenMP) (p=1) ==========
+
+--- N=2000, p=1, threads=1 ---
+Multiply:    4.64812 s
+Wait(comm):  0 s
+Total:       4.64813 s
+Memory/proc (2 B-blocks): 61.0352 MiB
+Per-step times (max over ranks):
+  step   multiply(s)    wait(s)
+     0     4.648122     0.000000
+Per-process times:
+  rank   compute(s)      comm(s)
+     0     4.648122     0.000000
+  C(0,0)=5  [rank 0]
+  C(0,1)=-10  [rank 0]
+  C(1,0)=15  [rank 0]
+  C(1000,1000)=-12  [rank 0]
+  C(1999,1999)=-5  [rank 0]
+[exit=0  wall=6s]
+
+================================================================
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS -n 2 --hostfile hosts ./task1 2000 1.4
+================================================================
+Processes=2
+  rank 0 on master
+  rank 1 on slave1
+
+========== Task 1.4  (Version C: Non-blocking Ring + OpenMP) (p=2) ==========
+
+--- N=2000, p=2, threads=1 ---
+Multiply:    2.71329 s
+Wait(comm):  0.28282 s
+Total:       2.85053 s
+Memory/proc (2 B-blocks): 30.5176 MiB
+Per-step times (max over ranks):
+  step   multiply(s)    wait(s)
+     0     1.339067     0.282820
+     1     1.374221     0.000000
+Per-process times:
+  rank   compute(s)      comm(s)
+     0     2.713288     0.133958
+     1     2.443358     0.282820
+  C(0,0)=5  [rank 0]
+  C(0,1)=-10  [rank 0]
+  C(1,0)=15  [rank 0]
+  C(1000,1000)=-12  [rank 1]
+  C(1999,1999)=-5  [rank 1]
+[exit=0  wall=3s]
+
+================================================================
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS --oversubscribe --map-by node -n 4 --hostfile hosts ./task1 2000 1.4
+================================================================
+Processes=4
+  rank 0 on master
+  rank 1 on slave1
+  rank 2 on slave2
+  rank 3 on master
+
+========== Task 1.4  (Version C: Non-blocking Ring + OpenMP) (p=4) ==========
+
+--- N=2000, p=4, threads=1 ---
+Multiply:    2.27794 s
+Wait(comm):  0.921867 s
+Total:       2.44582 s
+Memory/proc (2 B-blocks): 15.2588 MiB
+Per-step times (max over ranks):
+  step   multiply(s)    wait(s)
+     0     0.538245     0.305699
+     1     0.600786     0.336190
+     2     0.585192     0.307348
+     3     0.555817     0.000000
+Per-process times:
+  rank   compute(s)      comm(s)
+     0     2.277942     0.131756
+     1     1.273881     0.898070
+     2     1.274261     0.921867
+     3     2.190841     0.166566
+  C(0,0)=5  [rank 0]
+  C(0,1)=-10  [rank 0]
+  C(1,0)=15  [rank 0]
+  C(1000,1000)=-12  [rank 2]
+  C(1999,1999)=-5  [rank 3]
+[exit=0  wall=4s]
+
+================================================================
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS --oversubscribe --map-by node -n 8 --hostfile hosts ./task1 2000 1.4
+================================================================
+Processes=8
+  rank 0 on master
+  rank 1 on slave1
+  rank 2 on slave2
+  rank 3 on master
+  rank 4 on slave1
+  rank 5 on slave2
+  rank 6 on master
+  rank 7 on slave1
+
+========== Task 1.4  (Version C: Non-blocking Ring + OpenMP) (p=8) ==========
+
+--- N=2000, p=8, threads=1 ---
+Multiply:    1.34008 s
+Wait(comm):  1.10771 s
+Total:       2.92009 s
+Memory/proc (2 B-blocks): 7.62939 MiB
+Per-step times (max over ranks):
+  step   multiply(s)    wait(s)
+     0     0.151664     0.207404
+     1     0.184402     0.156754
+     2     0.175648     0.160035
+     3     0.171164     0.169587
+     4     0.175338     0.152819
+     5     0.161821     0.219131
+     6     0.181707     0.142357
+     7     0.199108     0.000000
+Per-process times:
+  rank   compute(s)      comm(s)
+     0     1.175909     0.816847
+     1     1.217566     0.717808
+     2     0.923813     0.899104
+     3     1.180851     0.798528
+     4     1.340083     0.663631
+     5     0.839344     1.107708
+     6     1.084262     0.894134
+     7     1.248768     0.746143
+  C(0,0)=5  [rank 0]
+  C(0,1)=-10  [rank 0]
+  C(1,0)=15  [rank 0]
+  C(1000,1000)=-12  [rank 4]
+  C(1999,1999)=-5  [rank 7]
+[exit=0  wall=4s]
+
+================================================================
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS -n 1 --hostfile hosts ./task1 4000 1.4
+================================================================
+Processes=1
+  rank 0 on master
+
+========== Task 1.4  (Version C: Non-blocking Ring + OpenMP) (p=1) ==========
+
+--- N=4000, p=1, threads=1 ---
+Multiply:    37.6348 s
+Wait(comm):  0 s
+Total:       37.6348 s
+Memory/proc (2 B-blocks): 244.141 MiB
+Per-step times (max over ranks):
+  step   multiply(s)    wait(s)
+     0    37.634794     0.000000
+Per-process times:
+  rank   compute(s)      comm(s)
+     0    37.634794     0.000000
+  C(0,0)=-7  [rank 0]
+  C(0,1)=5  [rank 0]
+  C(1,0)=20  [rank 0]
+  C(2000,2000)=9  [rank 0]
+  C(3999,3999)=17  [rank 0]
+[exit=0  wall=39s]
+
+================================================================
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS -n 2 --hostfile hosts ./task1 4000 1.4
+================================================================
+Processes=2
+  rank 0 on master
+  rank 1 on slave1
+
+========== Task 1.4  (Version C: Non-blocking Ring + OpenMP) (p=2) ==========
+
+--- N=4000, p=2, threads=1 ---
+Multiply:    28.4269 s
+Wait(comm):  2.05496 s
+Total:       28.9138 s
+Memory/proc (2 B-blocks): 122.07 MiB
+Per-step times (max over ranks):
+  step   multiply(s)    wait(s)
+     0    13.828353     2.054962
+     1    14.598513     0.000000
+Per-process times:
+  rank   compute(s)      comm(s)
+     0    28.426866     0.485205
+     1    25.562099     2.054962
+  C(0,0)=-7  [rank 0]
+  C(0,1)=5  [rank 0]
+  C(1,0)=20  [rank 0]
+  C(2000,2000)=9  [rank 1]
+  C(3999,3999)=17  [rank 1]
+[exit=0  wall=30s]
+
+================================================================
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS --oversubscribe --map-by node -n 4 --hostfile hosts ./task1 4000 1.4
+================================================================
+Processes=4
+  rank 0 on master
+  rank 1 on slave1
+  rank 2 on slave2
+  rank 3 on master
+
+========== Task 1.4  (Version C: Non-blocking Ring + OpenMP) (p=4) ==========
+
+--- N=4000, p=4, threads=1 ---
+Multiply:    28.4745 s
+Wait(comm):  9.0292 s
+Total:       29.1493 s
+Memory/proc (2 B-blocks): 61.0352 MiB
+Per-step times (max over ranks):
+  step   multiply(s)    wait(s)
+     0     7.452206     3.015800
+     1     7.122657     2.892135
+     2     7.153564     3.121267
+     3     6.895701     0.000000
+Per-process times:
+  rank   compute(s)      comm(s)
+     0    28.230669     0.692417
+     1    17.250379     8.808710
+     2    17.454950     9.029202
+     3    28.474533     0.505405
+  C(0,0)=-7  [rank 0]
+  C(0,1)=5  [rank 0]
+  C(1,0)=20  [rank 0]
+  C(2000,2000)=9  [rank 2]
+  C(3999,3999)=17  [rank 3]
+[exit=0  wall=30s]
+
+================================================================
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS --oversubscribe --map-by node -n 8 --hostfile hosts ./task1 4000 1.4
+================================================================
+Processes=8
+  rank 0 on master
+  rank 1 on slave1
+  rank 2 on slave2
+  rank 3 on master
+  rank 4 on slave1
+  rank 5 on slave2
+  rank 6 on master
+  rank 7 on slave1
+
+========== Task 1.4  (Version C: Non-blocking Ring + OpenMP) (p=8) ==========
+
+--- N=4000, p=8, threads=1 ---
+Multiply:    24.2976 s
+Wait(comm):  9.33497 s
+Total:       27.1232 s
+Memory/proc (2 B-blocks): 30.5176 MiB
+Per-step times (max over ranks):
+  step   multiply(s)    wait(s)
+     0     3.363929     1.529005
+     1     3.150733     1.459482
+     2     3.134095     1.344474
+     3     2.951712     1.411274
+     4     3.130460     1.417162
+     5     3.042895     1.359885
+     6     3.108173     1.384991
+     7     2.911381     0.000000
+Per-process times:
+  rank   compute(s)      comm(s)
+     0    24.217069     2.111448
+     1    22.196004     3.868101
+     2    16.517888     9.164425
+     3    24.297642     2.117846
+     4    21.430730     4.912167
+     5    16.006806     9.334969
+     6    23.716043     2.658152
+     7    21.734358     4.461618
+  C(0,0)=-7  [rank 0]
+  C(0,1)=5  [rank 0]
+  C(1,0)=20  [rank 0]
+  C(2000,2000)=9  [rank 4]
+  C(3999,3999)=17  [rank 7]
+[exit=0  wall=29s]
+
+######## TASK 1.4 — Version C hybrid, one process per node + OpenMP ########
+================================================================
+$ OMP_NUM_THREADS=1 mpirun -x OMP_NUM_THREADS -n 3 --hostfile hosts ./task1 4000 1.4
 ================================================================
 Processes=3
   rank 0 on master
   rank 1 on slave1
   rank 2 on slave2
 
-========== Task 1.4  (Version C: Non-blocking Ring + OpenMP, p=3) ==========
+========== Task 1.4  (Version C: Non-blocking Ring + OpenMP) (p=3) ==========
 
---- N=4000, p=3, threads=4 ---
-Multiply:    24.3208 s
-Wait(comm):  1.8879 s
-Gatherv(C):  0.747487 s
-Total:       25.3872 s
+--- N=4000, p=3, threads=1 ---
+Multiply:    25.2239 s
+Wait(comm):  2.34169 s
+Total:       25.8031 s
 Memory/proc (2 B-blocks): 81.4209 MiB
 Per-step times (max over ranks):
   step   multiply(s)    wait(s)
-     0     8.081109     0.635895
-     1     8.305565     1.360154
-     2     7.934163     0.000000
-  C(0,0)=-7  C(0,1)=5  C(1,0)=20  C(N/2,N/2)=9  C(N-1,N-1)=17
-[exit=0  wall=26s]
+     0     8.794953     1.557218
+     1     8.079122     0.805128
+     2     8.349779     0.000000
+Per-process times:
+  rank   compute(s)      comm(s)
+     0    25.223854     0.574200
+     1    22.325292     2.341695
+     2    22.357357     2.264943
+  C(0,0)=-7  [rank 0]
+  C(0,1)=5  [rank 0]
+  C(1,0)=20  [rank 0]
+  C(2000,2000)=9  [rank 1]
+  C(3999,3999)=17  [rank 2]
+[exit=0  wall=27s]
 
-ALL DONE Sun Nov  8 10:31:02 AM UTC 2026
+================================================================
+$ OMP_NUM_THREADS=4 mpirun -x OMP_NUM_THREADS -n 2 --hostfile hosts ./task1 4000 1.4
+================================================================
+Processes=2
+  rank 0 on master
+  rank 1 on slave1
+
+========== Task 1.4  (Version C: Non-blocking Ring + OpenMP) (p=2) ==========
+
+--- N=4000, p=2, threads=4 ---
+Multiply:    26.6029 s
+Wait(comm):  1.84197 s
+Total:       27.1613 s
+Memory/proc (2 B-blocks): 122.07 MiB
+Per-step times (max over ranks):
+  step   multiply(s)    wait(s)
+     0    13.380804     1.841966
+     1    13.222071     0.000000
+Per-process times:
+  rank   compute(s)      comm(s)
+     0    26.602874     0.557812
+     1    24.288070     1.841966
+  C(0,0)=-7  [rank 0]
+  C(0,1)=5  [rank 0]
+  C(1,0)=20  [rank 0]
+  C(2000,2000)=9  [rank 1]
+  C(3999,3999)=17  [rank 1]
+[exit=0  wall=28s]
+
+================================================================
+$ OMP_NUM_THREADS=4 mpirun -x OMP_NUM_THREADS -n 3 --hostfile hosts ./task1 4000 1.4
+================================================================
+Processes=3
+  rank 0 on master
+  rank 1 on slave1
+  rank 2 on slave2
+
+========== Task 1.4  (Version C: Non-blocking Ring + OpenMP) (p=3) ==========
+
+--- N=4000, p=3, threads=4 ---
+Multiply:    26.1934 s
+Wait(comm):  2.63876 s
+Total:       26.7351 s
+Memory/proc (2 B-blocks): 81.4209 MiB
+Per-step times (max over ranks):
+  step   multiply(s)    wait(s)
+     0     8.810655     1.621475
+     1     8.556899     1.049096
+     2     8.825808     0.000000
+Per-process times:
+  rank   compute(s)      comm(s)
+     0    26.193362     0.536698
+     1    22.752481     2.638759
+     2    22.965273     2.540618
+  C(0,0)=-7  [rank 0]
+  C(0,1)=5  [rank 0]
+  C(1,0)=20  [rank 0]
+  C(2000,2000)=9  [rank 1]
+  C(3999,3999)=17  [rank 2]
+[exit=0  wall=28s]
+
+ALL DONE Mon Nov  9 02:34:22 PM UTC 2026
