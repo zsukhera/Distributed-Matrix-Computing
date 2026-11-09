@@ -1,2 +1,111 @@
 Question 1 
 version A is about 
+
+Question 2
+we have n users in a circle and every user has a feature vector of 16 floats.
+What each step does is that, it replaces the features of every user wit the
+weighted average of their friend's features. 
+ H_new[i] = sum over friends j of i:  (1/degree(i)) * H[j]
+The graph is deterministic and generated on the fly and is not globally stored.
+Normal users get 4-12 friends and hub users get 64-127 friends. 
+Hub users make first 10% of the the circle whose hash is divisible by 4
+
+Every link of a particular user has an offset which lies between -128 and 128
+This is called the HALO constant. 
+
+Task 2.1 
+it requires CSR to be run in 3 ways and then present a comparison
+serial, and then with 2 types of scheduling (static and dynamic).
+
+The reason dynamic scheduling is the winner here is that the first 10% 
+of the array are hub users and therefore the problem size is not uniform.
+
+Task 2.2
+MPI Version A
+here all the rows of H are sent across all processes
+it requires that we distribute the rows of H across p processes and then run
+10 steps with MPI
+
+MPI_Allgatherv - each process sends its rows of H and receives the rows of every
+other proess. and each process runs csr_rows over its own processes
+
+What is a halo row?
+When you split the users across processes, each process owns a contiguous block
+of rows. To compute H_new for a row near the edge of its block, it needs feature
+data from users just outside its block (because links reach up to 128 positions
+away). Those "just outside" rows are called halo rows.
+
+Specifically:
+  - The LEFT halo  = the last 128 rows of the left neighbour's block
+  - The RIGHT halo = the first 128 rows of the right neighbour's block
+
+Each step, these 128+128 rows are exchanged between neighbours. The process
+copies them into a buffer that looks like:
+
+  [ 128 left-halo | my own rows | 128 right-halo ]
+
+and then runs the CSR step entirely locally using this extended buffer.
+The halo rows are NOT owned or updated by this process — they are read-only
+copies borrowed from neighbours for the duration of one step, then overwritten
+again next step.
+
+Task 2.3
+MPI Version B
+Halo exchange
+the version A sends the whole of H to all processes which is not necessary
+Every link offset is bounded (-128,128) so there is no need to send beyond this.
+it only needs halo rows from its immediate left and right neighbours.
+
+since less data is moved, communication and computation can overlap.
+less memory is used as well.
+
+Interior vs Boundary rows:
+Every process owns my_rows rows, split into 3 bands:
+  [ boundary (128) | interior (my_rows - 256) | boundary (128) ]
+Boundary rows need halo data to compute. Interior rows only read from
+the process's own block so they can be computed while halos are in flight.
+If my_rows <= 256 there are no interior rows and overlap gives no benefit.
+
+but this is complex and mostly tailored to this graph. if it were any other
+sparse graph where links could reach anywhere, then version A would be appropriate.
+
+Task 2.4
+Equal-rows vs Equal-links partitioning
+
+The goal is to show that how you divide the users across processes matters a lot
+for load balance, and that equal-rows is a bad default for this graph.
+
+Equal-rows partitioning:
+Process r gets rows [r*(n/p), (r+1)*(n/p)). Every process gets roughly the same
+number of users. The problem is that hub users live in the first 10% of the circle.
+Whichever process owns that region handles rows with 64-127 links while every other
+process handles rows with only 4-12 links. One process does ~10x more work and
+everyone else waits. The compute imbalance (max/avg) printed in the report will be
+significantly above 1.0.
+
+Equal-links partitioning:
+Instead of splitting by user count, we split by total link count (i.e. total work).
+The idea is like filling buckets — each process should get total/p links.
+
+Rank 0 walks users 0,1,2,... left to right keeping a running sum of links seen.
+After each user it checks: have we consumed at least the r-th equal share of all
+links? (run/total >= r/p, written as run*p >= total*r to avoid division). The
+moment we have, a boundary is cut there and we move on to the next boundary.
+
+This means the hub region (dense, first 10%) gets a narrow slice in terms of rows
+but its link count matches every other process. Normal regions get wide slices.
+
+After the boundaries are computed, two constraints are enforced:
+  - Every block must have at least HALO=128 rows (forward pass: b[q] >= b[q-1]+128)
+  - Then trimmed from the right so no block exceeds the next boundary (backward pass)
+This is necessary because Version B requires at least 128 rows per process for the
+halo exchange to work correctly.
+
+Rank 0 computes the boundaries alone and then MPI_Bcast sends them to all processes.
+
+Both partitions are then run through Version B with overlap and the report prints:
+  - The first user and row count per process for both strategies side by side
+  - Compute imbalance (max/avg): equal-rows will show a high ratio, equal-links ~1.0
+
+The takeaway is that for graphs with non-uniform degree (like this one with hubs),
+work-aware partitioning is necessary to get good parallel efficiency.
