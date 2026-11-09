@@ -39,16 +39,19 @@ test1: task1
 	OMP_NUM_THREADS=4 mpirun -n 1 ./task1
 
 	@echo ">>> Q1 | p=2, threads=1"
-	OMP_NUM_THREADS=1 mpirun -n 2 ./task1
+	OMP_NUM_THREADS=1 mpirun --oversubscribe -n 2 ./task1
+
+	@echo ">>> Q1 | p=3, threads=1 (PDF requires N=8 test with p=1,2,3)"
+	OMP_NUM_THREADS=1 mpirun --oversubscribe -n 3 ./task1
 
 	@echo ">>> Q1 | p=4, threads=1"
-	OMP_NUM_THREADS=1 mpirun -n 4 ./task1
+	OMP_NUM_THREADS=1 mpirun --oversubscribe -n 4 ./task1
 
 	@echo ">>> Q1 | p=8, threads=1"
-	OMP_NUM_THREADS=1 mpirun -n 8 ./task1
+	OMP_NUM_THREADS=1 mpirun --oversubscribe -n 8 ./task1
 
 	@echo ">>> Q1 | p=2, threads=4 (hybrid)"
-	OMP_NUM_THREADS=4 mpirun -n 2 ./task1
+	OMP_NUM_THREADS=4 mpirun --oversubscribe -n 2 ./task1
 
 # -----------------------------------------------------------------------
 # Question 2 — Sparse Matrix Multiplication (Social Network)
@@ -79,14 +82,47 @@ task3: task3.cpp
 	$(CXX) $(CXXFLAGS) -o $@ $< $(LDFLAGS)
 
 test3: task3
-	@echo ">>> Q3 | p=1, threads=1"
-	OMP_NUM_THREADS=1 mpirun -n 1 ./task3
+	@echo ">>> Q3 3.1+3.2 correctness | m=512, p=1"
+	OMP_NUM_THREADS=1 mpirun -n 1 ./task3 512
 
-	@echo ">>> Q3 | p=4, threads=1"
-	OMP_NUM_THREADS=1 mpirun -n 4 ./task3
+	@echo ">>> Q3 3.1+3.2 correctness | m=512, p=2"
+	OMP_NUM_THREADS=1 mpirun --oversubscribe -n 2 ./task3 512
 
-	@echo ">>> Q3 | p=8, threads=1"
-	OMP_NUM_THREADS=1 mpirun -n 8 ./task3
+	@echo ">>> Q3 3.1+3.2 correctness | m=512, p=3"
+	OMP_NUM_THREADS=1 mpirun --oversubscribe -n 3 ./task3 512
+
+	@echo ">>> Q3 3.1+3.2 correctness | m=512, p=4"
+	OMP_NUM_THREADS=1 mpirun --oversubscribe -n 4 ./task3 512
+
+	@echo ">>> Q3 3.1+3.2 | m=1024, p=1"
+	OMP_NUM_THREADS=1 mpirun -n 1 ./task3 1024
+
+	@echo ">>> Q3 3.1+3.2 | m=1024, p=4"
+	OMP_NUM_THREADS=1 mpirun --oversubscribe -n 4 ./task3 1024
+
+	@echo ">>> Q3 3.1+3.2 | m=1024, p=8"
+	OMP_NUM_THREADS=1 mpirun --oversubscribe -n 8 ./task3 1024
+
+	@echo ">>> Q3 3.2 benchmark | p=2"
+	OMP_NUM_THREADS=1 mpirun --oversubscribe -n 2 ./task3 512 3.2
+
+	@echo ">>> Q3 3.2 benchmark | p=4"
+	OMP_NUM_THREADS=1 mpirun --oversubscribe -n 4 ./task3 512 3.2
+
+	@echo ">>> Q3 3.2 benchmark | p=8"
+	OMP_NUM_THREADS=1 mpirun --oversubscribe -n 8 ./task3 512 3.2
+
+	@echo ">>> Q3 3.3 scaling | m=1024, p=1"
+	OMP_NUM_THREADS=1 mpirun -n 1 ./task3 1024 3.3
+
+	@echo ">>> Q3 3.3 scaling | m=1024, p=2"
+	OMP_NUM_THREADS=1 mpirun --oversubscribe -n 2 ./task3 1024 3.3
+
+	@echo ">>> Q3 3.3 scaling | m=1024, p=4"
+	OMP_NUM_THREADS=1 mpirun --oversubscribe -n 4 ./task3 1024 3.3
+
+	@echo ">>> Q3 3.3 scaling | m=1024, p=8"
+	OMP_NUM_THREADS=1 mpirun --oversubscribe -n 8 ./task3 1024 3.3
 
 # -----------------------------------------------------------------------
 # Binaries copied to every slave (add task3 once task3.cpp exists).

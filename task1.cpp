@@ -133,6 +133,34 @@ static void gather_C(double* local_C, double* C_full,
                     nullptr, counts, displs, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 }
 
+/* N=8: gather to rank 0 and print full matrix (for checking only).
+   Large N: each process prints only the five Table 1(b) entries it owns
+   without gathering — PDF: "each entry is printed by the process that owns its row". */
+static void print_check(const double* local_C, double* C_full,
+                        const int* counts, const int* displs,
+                        int N, int rank, int my_start, int my_rows)
+{
+    if (N == 8) {
+        gather_C(const_cast<double*>(local_C), C_full, counts, displs, rank);
+        if (rank == 0) print_full_matrix(C_full, N);
+        return;
+    }
+    int er[] = {0, 0, 1, N/2, N-1};
+    int ec[] = {0, 1, 0, N/2, N-1};
+    for (int e = 0; e < 5; e++) {
+        MPI_Barrier(MPI_COMM_WORLD);
+        int r = er[e], c = ec[e];
+        if (r >= my_start && r < my_start + my_rows) {
+            cout << fixed << setprecision(0)
+                 << "  C(" << r << "," << c << ")="
+                 << local_C[(long)(r - my_start) * N + c]
+                 << "  [rank " << rank << "]\n";
+            cout.flush();
+        }
+    }
+    MPI_Barrier(MPI_COMM_WORLD);
+}
+
 static void task1_1(int rank, const int* sizes, int nsizes)
 {
     if (rank != 0) return;
@@ -301,31 +329,31 @@ static void task1_3_one(int N, int rank, int size)
     MPI_Reduce(&t_mult_total, &t_mult_max, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
     MPI_Reduce(&t_ring_total, &t_ring_max, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
 
-    double* C_full = nullptr;
-    if (rank == 0) {
-        C_full = new double[(size_t)N * N];
-        memcpy(C_full, local_C, (size_t)counts[0] * sizeof(double));
-    }
-    double tg = MPI_Wtime();
-    gather_C(local_C, C_full, counts, displs, rank);
-    double t_gather = elapsed_max(tg), t_total = elapsed_max(t_start);
+    /* Capture total time before any gather — the gather is for checking only. */
+    MPI_Barrier(MPI_COMM_WORLD);
+    double t_total = elapsed_max(t_start);
 
     if (rank == 0) {
         cout << "\n--- N=" << N << ", p=" << size << " ---\n"
              << setprecision(6) << defaultfloat
              << "Ring-comm:   " << t_ring_max << " s\n"
              << "Multiply:    " << t_mult_max << " s\n"
-             << "Gatherv(C):  " << t_gather   << " s\n"
              << "Total:       " << t_total    << " s\n"
              << "Memory/proc (2 B-blocks): "
              << 2.0 * max_block_rows * N * sizeof(double) / (1024.0 * 1024.0)
              << " MiB (vs "
              << (double)N * N * sizeof(double) / (1024.0 * 1024.0)
              << " MiB for Version A's full B)\n";
-        if (N == 8) print_full_matrix(C_full, N);
-        else        print_five_entries(C_full, N);
-        delete[] C_full;
     }
+
+    /* N=8: gather to rank 0 (for checking); large N: owning process prints its entries. */
+    double* C_full = nullptr;
+    if (N == 8 && rank == 0) {
+        C_full = new double[(size_t)N * N];
+        memcpy(C_full, local_C, (size_t)counts[0] * sizeof(double));
+    }
+    print_check(local_C, C_full, counts, displs, N, rank, my_start, my_rows);
+    delete[] C_full;
 
     delete[] local_A; delete[] local_C;
     delete[] buf[0];  delete[] buf[1];
@@ -399,14 +427,9 @@ static void task1_4_one(int N, int rank, int size)
     MPI_Reduce(step_mult.data(), step_mult_max.data(), size, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
     MPI_Reduce(step_wait.data(), step_wait_max.data(), size, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
 
-    double* C_full = nullptr;
-    if (rank == 0) {
-        C_full = new double[(size_t)N * N];
-        memcpy(C_full, local_C, (size_t)counts[0] * sizeof(double));
-    }
-    double tg = MPI_Wtime();
-    gather_C(local_C, C_full, counts, displs, rank);
-    double t_gather = elapsed_max(tg), t_total = elapsed_max(t_start);
+    /* Capture total time before any gather — the gather is for checking only. */
+    MPI_Barrier(MPI_COMM_WORLD);
+    double t_total = elapsed_max(t_start);
 
     if (rank == 0) {
         int nthreads = 1;
@@ -418,7 +441,6 @@ static void task1_4_one(int N, int rank, int size)
              << setprecision(6) << defaultfloat
              << "Multiply:    " << t_mult_max << " s\n"
              << "Wait(comm):  " << t_wait_max << " s\n"
-             << "Gatherv(C):  " << t_gather   << " s\n"
              << "Total:       " << t_total    << " s\n"
              << "Memory/proc (2 B-blocks): "
              << 2.0 * max_block_rows * N * sizeof(double) / (1024.0 * 1024.0) << " MiB\n";
@@ -430,10 +452,16 @@ static void task1_4_one(int N, int rank, int size)
                  << "   " << setw(10) << step_mult_max[s]
                  << "   " << setw(10) << step_wait_max[s] << "\n";
         cout << setprecision(6) << defaultfloat;
-        if (N == 8) print_full_matrix(C_full, N);
-        else        print_five_entries(C_full, N);
-        delete[] C_full;
     }
+
+    /* N=8: gather to rank 0 (for checking); large N: owning process prints its entries. */
+    double* C_full = nullptr;
+    if (N == 8 && rank == 0) {
+        C_full = new double[(size_t)N * N];
+        memcpy(C_full, local_C, (size_t)counts[0] * sizeof(double));
+    }
+    print_check(local_C, C_full, counts, displs, N, rank, my_start, my_rows);
+    delete[] C_full;
 
     delete[] local_A; delete[] local_C;
     delete[] buf[0];  delete[] buf[1];

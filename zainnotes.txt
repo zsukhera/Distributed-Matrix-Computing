@@ -109,3 +109,79 @@ Both partitions are then run through Version B with overlap and the report print
 
 The takeaway is that for graphs with non-uniform degree (like this one with hubs),
 work-aware partitioning is necessary to get good parallel efficiency.
+
+---
+Question 3 - Adding Up Partial Results (Parallel Training)
+
+Setup:
+  L=8 layers, each with an m x m weight matrix W_l (m=512 or 1024).
+  Batch = 512 examples split evenly across p processes.
+  S = 5 training steps. Each step:
+    1. Each process computes G_l = X_l x E_l over its own examples (OpenMP i-k-j).
+    2. All-reduce sums the gradients across all processes.
+    3. Every process updates W_l = W_l - G_l / 65536.
+
+  Input formulas (g = global example index, s = step, l = layer):
+    X_l(i, g) = ((i + 3g + 5l + s) mod 9) - 4
+    E_l(g, j) = ((2g + j + l + 3s) mod 7) - 3
+
+  After the all-reduce, every process holds the same summed gradient and
+  therefore computes identical weight updates — this is verified by Table 4(b).
+
+Task 3.1a - MPI_Reduce + MPI_Bcast:
+  Rank 0 collects the sum with MPI_Reduce (MPI_IN_PLACE on rank 0, nullptr
+  sendbuf on others), then broadcasts back with MPI_Bcast.
+  Simple but rank 0 is a bottleneck — all traffic flows through it.
+
+Task 3.1b - MPI_Allreduce:
+  Single built-in collective that does reduce + broadcast in one call.
+  Internally uses a tree or ring algorithm. Less code, usually faster than 3.1a.
+
+Task 3.2 - Custom Ring All-Reduce:
+  Manually implemented using MPI_Isend + MPI_Irecv + MPI_Waitall.
+  The gradient array is cut into p chunks. Runs 2*(p-1) steps total.
+
+  Phase 1 - Reduce-scatter (p-1 steps):
+    Each process sends chunk (r-s) mod p to its RIGHT neighbour and receives
+    chunk (r-s-1) mod p from its LEFT neighbour, then ADDS the received values
+    into its local copy. After p-1 steps, process r holds the fully summed
+    value for exactly one chunk: chunk (r+1) mod p.
+
+  Phase 2 - All-gather (p-1 steps):
+    Each process sends the last chunk it received to the RIGHT and receives a
+    new fully-summed chunk from the LEFT, OVERWRITING its local copy.
+    After p-1 steps every process has the complete sum for all chunks.
+
+  Tags for phase 1: 0..p-2. Tags for phase 2: p..2p-2 (avoids collision).
+
+  Why it matters: unlike Reduce+Bcast (all traffic through rank 0), the ring
+  spreads load evenly — every process sends and receives the same amount of
+  data each step. Scales better at large p.
+
+Task 3.3 - Scaling Study:
+  Run the BEST all-reduce (MPI_Allreduce, Task 3.1b) with m=1024 and
+  p=1, 2, 4, 8 (one process per node, OpenMP threads inside each process).
+  Batch stays fixed at 512.
+
+  What to report:
+    - Total time, compute time/step, allreduce time/step for each p.
+    - Speedup = T(1) / T(p), Efficiency = Speedup / p.
+
+  Why speedup flattens:
+    As p grows, each process computes fewer examples (512/p), so compute
+    time shrinks. But the all-reduce must still sum L*m*m doubles = 8*1024*1024
+    ~8M doubles regardless of p. Eventually allreduce dominates and adding
+    more processes gives no benefit (Amdahl's law on the communication part).
+
+  Verification (every process must print Table 4(b) to confirm all weights
+  are identical after the all-reduce):
+    Table 4(a) - summed gradients after step 0 all-reduce:
+      m=512:  G0(1,2)=33   G0(511,511)=24   G7(511,511)=27
+      m=1024: G0(1,2)=33   G0(1023,1023)=5  G7(1023,1023)=-20
+
+    Table 4(b) - weights after S=5 steps:
+      m=512:  W0(0,0)=0.0001220703125  W0(1,2)=-0.000152587890625
+              W7(511,511)=-0.00079345703125
+      m=1024: W0(0,0)=0.0001220703125  W0(1,2)=-0.000152587890625
+              W7(1023,1023)=0.0008697509765625
+
